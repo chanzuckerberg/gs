@@ -1,0 +1,136 @@
+#!/usr/bin/env python
+
+# TODO: https://cloud.google.com/storage/docs/json_api/v1/how-tos/batch
+
+import os, sys, json, textwrap, readline, time, datetime
+from argparse import Namespace
+
+import click, tweak, jwt, requests
+
+from gs.util.printing import page_output, tabulate, GREEN, BLUE, BOLD
+from gs.version import __version__
+
+@click.group()
+@click.version_option(version=__version__)
+def cli():
+    pass
+
+@click.command()
+def configure():
+    msg = ("Please open " + BOLD("https://console.cloud.google.com/iam-admin/serviceaccounts") + ", create a service "
+           "account and download its private key. The service account should have a role with Google Storage access. "
+           "Paste the key file location or contents below.")
+    print("\n".join(textwrap.wrap(msg, 120)))
+    prompt = "Service account key filename or contents: "
+    buf, filename = "", None
+    while True:
+        line = input(prompt).strip()
+        if line == "":
+            if buf == "":
+                continue
+            break
+        if buf == "" and line != "{":
+            filename = line
+            break
+        buf += line
+        if line == "}":
+            break
+        prompt = ""
+    if filename:
+        with open(filename) as fh:
+            key = json.load(fh)
+    else:
+        key = json.loads(buf)
+    config.service_credentials = key
+    config.save()
+    print("Key configuration saved.")
+
+class GSClient:
+    base_url = "https://www.googleapis.com/storage/v1/"
+    scope = "https://www.googleapis.com/auth/cloud-platform"
+
+    def __init__(self, config, **session_kwargs):
+        self.config = config
+        self._service_jwt = None
+        self._oauth2_token = None
+        self._session = None
+        self._session_kwargs = session_kwargs
+
+    def get_session(self):
+        if self._session is None:
+            self._session = requests.Session(**self._session_kwargs)
+            self._session.headers.update({"Authorization": "Bearer " + self.get_oauth2_token(),
+                                          "User-Agent": self.__class__.__name__})
+        return self._session
+
+    def get_oauth2_token(self):
+        # TODO: invalidate and refetch before expiration
+        if self._oauth2_token is None:
+            params = dict(grant_type="urn:ietf:params:oauth:grant-type:jwt-bearer", assertion=self.get_service_jwt())
+            res = requests.post("https://www.googleapis.com/oauth2/v4/token", data=params)
+            self._oauth2_token = res.json()["access_token"]
+        return self._oauth2_token
+
+    def get_service_jwt(self):
+        if self._service_jwt is None:
+            payload = {
+                'iss': self.config.service_credentials["client_email"],
+                'sub': self.config.service_credentials["client_email"],
+                'scope': self.scope,
+                'aud': "https://www.googleapis.com/oauth2/v4/token",
+                'iat': datetime.datetime.utcnow(),
+                'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=60)
+            }
+            additional_headers = {'kid': self.config.service_credentials["private_key_id"]}
+            self._service_jwt = jwt.encode(payload,
+                                           self.config.service_credentials["private_key"],
+                                           headers=additional_headers,
+                                           algorithm='RS256').decode()
+        return self._service_jwt
+
+    def request(self, method, resource, **kwargs):
+        return self.get_session().request(method=method, url=self.base_url+resource, **kwargs).json()
+
+    def get(self, resource, **kwargs):
+        return self.request(method="get", resource=resource, **kwargs)
+
+    def post(self, resource, **kwargs):
+        return self.request(method="post", resource=resource, **kwargs)
+
+    def patch(self, resource, **kwargs):
+        return self.request(method="patch", resource=resource, **kwargs)
+
+    def put(self, resource, **kwargs):
+        return self.request(method="put", resource=resource, **kwargs)
+
+    def delete(self, resource, **kwargs):
+        return self.request(method="delete", resource=resource, **kwargs)
+
+@click.command()
+@click.argument('path', required=False)
+def ls(path):
+    if path is None:
+        res = client.get("b", params=dict(project=config.service_credentials["project_id"]))
+        page_output(tabulate(res["items"], args=Namespace(columns=["name", "timeCreated", "updated", "location", "storageClass"], max_col_width=40)))
+    else:
+        if "/" not in path:
+            bucket, prefix = path, None
+        else:
+            if path.startswith("gs://"):
+                path = path[len("gs://"):]
+            bucket, prefix = path.split("/", 1)
+        params = dict(delimiter="/")
+        if prefix:
+            params["prefix"] = prefix
+        res = client.get("b/{}/o".format(bucket), params=params)
+        items = [dict(name=i) for i in res.get("prefixes", [])] + res.get("items", [])
+        page_output(tabulate(items, args=Namespace(columns=["name", "size", "timeCreated", "updated", "contentType", "storageClass"], max_col_width=40)))
+
+config = tweak.Config("gs")
+client = GSClient(config=config)
+
+cli.add_command(configure)
+cli.add_command(ls)
+
+if __name__ == '__main__':
+    cli()
