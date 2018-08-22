@@ -2,3 +2,4 @@ tweak
 pyjwt
 requests
 click
+cryptography
