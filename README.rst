@@ -15,6 +15,25 @@ Installation
 
    pip install gs
 
+Synopsis
+~~~~~~~~
+Usage:
+  ``gs [OPTIONS] COMMAND [ARGS]...``
+
+Options:
+  --version  Show the version and exit.
+  --help     Show this message and exit.
+
+Commands:
+  --gs configure  Set gs config options, including the API key.
+  --gs cp         Copy files to, from, or between buckets.
+  --gs ls         List buckets or objects in a bucket/prefix.
+  --gs mb         Create a new bucket.
+  --gs mv         Move files to, from, or between buckets.
+  --gs rb         Permanently delete an empty bucket.
+  --gs rm         Delete objects (files) from buckets.
+  --gs sync       Sync directories of files with buckets/prefixes.
+
 Run ``gs configure`` to configure Google service account access credentials that will be used by the
 ``gs`` command. You can create a new service account key at https://console.cloud.google.com/iam-admin/serviceaccounts.
 
