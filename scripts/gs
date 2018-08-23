@@ -13,15 +13,16 @@ from gs.version import __version__
 @click.group()
 @click.version_option(version=__version__)
 def cli():
-    pass
+    """gs is a minimalistic CLI for Google Cloud Storage."""
 
 @click.command()
 def configure():
+    """Set gs config options, including the API key."""
     msg = ("Please open " + BOLD("https://console.cloud.google.com/iam-admin/serviceaccounts") + ", create a service "
            "account and download its private key. The service account should have a role with Google Storage access. "
-           "Paste the key file location or contents below.")
+           "Drag & drop the key file into this terminal window, or paste the file location or JSON contents below.")
     print("\n".join(textwrap.wrap(msg, 120)))
-    prompt = "Service account key filename or contents: "
+    prompt = "Service account key file path or contents: "
     buf, filename = "", None
     while True:
         line = input(prompt).strip()
@@ -116,6 +117,7 @@ class GSUploadClient(GSClient):
 @click.command()
 @click.argument('path', required=False)
 def ls(path):
+    """List buckets or objects in a bucket/prefix."""
     if path is None:
         res = client.get("b", params=dict(project=config.service_credentials["project_id"]))
         columns = ["name", "timeCreated", "updated", "location", "storageClass"]
@@ -148,6 +150,7 @@ def read_file_chunks(filename, chunk_size=1024 * 1024):
 @click.command()
 @click.argument('paths', nargs=-1, required=True)
 def cp(paths):
+    """Copy files to, from, or between buckets."""
     assert len(paths) >= 2
     api_method_template = "b/{source_bucket}/o/{source_key}/copyTo/b/{dest_bucket}/o/{dest_key}"
     if all(p.startswith("gs://") for p in paths):
@@ -201,6 +204,7 @@ cli.add_command(cp)
 @click.command()
 @click.argument('paths', nargs=-1, required=True)
 def mv(paths):
+    """Move files to, from, or between buckets."""
     cp.main(paths, standalone_mode=False)
     rm(paths[:-1])
 
@@ -209,6 +213,7 @@ cli.add_command(mv)
 @click.command()
 @click.argument('paths', nargs=-1, required=True)
 def rm(paths):
+    """Delete objects (files) from buckets."""
     if not all(p.startswith("gs://") for p in paths):
         raise click.BadParameter("paths")
     for path in paths:
@@ -225,6 +230,32 @@ def sync(paths):
     raise NotImplementedError()
 
 cli.add_command(sync)
+
+@click.command()
+@click.argument('bucket_name')
+@click.option('--location')
+@click.option('--storage-class')
+def mb(bucket_name, storage_class=None, location=None):
+    """Create a new bucket."""
+    print("Creating new Google Storage bucket {}".format(bucket_name))
+    api_params = dict(name=bucket_name)
+    if location:
+        api_params["location"] = location
+    if storage_class:
+        api_params["storageClass"] = storage_class
+    res = client.post("b", params=dict(project=config.service_credentials["project_id"]), json=api_params)
+    print(json.dumps(res, indent=4))
+
+cli.add_command(mb)
+
+@click.command()
+@click.argument('bucket_name')
+def rb(bucket_name):
+    """Permanently delete an empty bucket."""
+    print("Deleting Google Storage bucket {}".format(bucket_name))
+    client.delete("b/{}".format(requests.compat.quote(bucket_name)))
+
+cli.add_command(rb)
 
 config = tweak.Config("gs")
 client = GSClient(config=config)

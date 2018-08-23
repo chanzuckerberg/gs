@@ -1,8 +1,6 @@
 GS: A minimalistic Google Storage client
 ========================================
 
-**In development**
-
 *gs* is a command line interface (CLI) that provides a set of essential commands for
 `Google Cloud Storage <https://cloud.google.com/storage/>`_. It is modeled after the AWS CLI's ``aws s3`` command. Its
 features are:
