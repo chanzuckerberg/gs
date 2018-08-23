@@ -45,6 +45,8 @@ def configure():
     config.save()
     print("Key configuration saved.")
 
+cli.add_command(configure)
+
 class GSClient:
     base_url = "https://www.googleapis.com/storage/v1/"
     scope = "https://www.googleapis.com/auth/cloud-platform"
@@ -89,7 +91,9 @@ class GSClient:
         return self._service_jwt
 
     def request(self, method, resource, **kwargs):
-        return self.get_session().request(method=method, url=self.base_url+resource, **kwargs).json()
+        res = self.get_session().request(method=method, url=self.base_url + resource, **kwargs)
+        res.raise_for_status()
+        return res if kwargs.get("stream") is True or method == "delete" else res.json()
 
     def get(self, resource, **kwargs):
         return self.request(method="get", resource=resource, **kwargs)
@@ -106,31 +110,125 @@ class GSClient:
     def delete(self, resource, **kwargs):
         return self.request(method="delete", resource=resource, **kwargs)
 
+class GSUploadClient(GSClient):
+    base_url = "https://www.googleapis.com/upload/storage/v1/"
+
 @click.command()
 @click.argument('path', required=False)
 def ls(path):
     if path is None:
         res = client.get("b", params=dict(project=config.service_credentials["project_id"]))
-        page_output(tabulate(res["items"], args=Namespace(columns=["name", "timeCreated", "updated", "location", "storageClass"], max_col_width=40)))
+        columns = ["name", "timeCreated", "updated", "location", "storageClass"]
+        page_output(tabulate(res["items"], args=Namespace(columns=columns, max_col_width=40)))
     else:
+        if path.startswith("gs://"):
+            path = path[len("gs://"):]
         if "/" not in path:
             bucket, prefix = path, None
         else:
-            if path.startswith("gs://"):
-                path = path[len("gs://"):]
             bucket, prefix = path.split("/", 1)
         params = dict(delimiter="/")
         if prefix:
             params["prefix"] = prefix
         res = client.get("b/{}/o".format(bucket), params=params)
         items = [dict(name=i) for i in res.get("prefixes", [])] + res.get("items", [])
-        page_output(tabulate(items, args=Namespace(columns=["name", "size", "timeCreated", "updated", "contentType", "storageClass"], max_col_width=40)))
+        columns = ["name", "size", "timeCreated", "updated", "contentType", "storageClass"]
+        page_output(tabulate(items, args=Namespace(columns=columns, max_col_width=40)))
+
+cli.add_command(ls)
+
+def read_file_chunks(filename, chunk_size=1024 * 1024):
+    with open(filename, "rb") as fh:
+        while True:
+            chunk = fh.read(chunk_size)
+            if len(chunk) == 0:
+                break
+            yield chunk
+
+@click.command()
+@click.argument('paths', nargs=-1, required=True)
+def cp(paths):
+    assert len(paths) >= 2
+    api_method_template = "b/{source_bucket}/o/{source_key}/copyTo/b/{dest_bucket}/o/{dest_key}"
+    if all(p.startswith("gs://") for p in paths):
+        for path in paths[:-1]:
+            _, _, source_bucket, source_key = path.split("/", 3)
+            _, _, dest_bucket, dest_prefix = paths[-1].split("/", 3)
+            dest_key = dest_prefix
+            # TODO: check if dest_prefix is a prefix on the remote
+            if dest_prefix.endswith("/") or len(paths) > 2:
+                dest_key = os.path.join(dest_prefix, os.path.basename(source_key))
+            api_args = dict(source_bucket=source_bucket,
+                            source_key=source_key,
+                            dest_bucket=dest_bucket,
+                            dest_key=dest_key)
+            print("Copying gs://{source_bucket}/{source_key} to gs://{dest_bucket}/{dest_key}".format(**api_args))
+            escaped_args = {k: requests.compat.quote(v, safe="") for k, v in api_args.items()}
+            client.post(api_method_template.format(**escaped_args))
+    elif all(p.startswith("gs://") for p in paths[:-1]) and not paths[-1].startswith("gs://"):
+        # TODO: support remote wildcards
+        for path in paths[:-1]:
+            _, _, source_bucket, source_key = path.split("/", 3)
+            dest_filename = paths[-1]
+            if os.path.isdir(dest_filename) or len(paths) > 2:
+                dest_filename = os.path.join(dest_filename, os.path.basename(source_key))
+            api_args = dict(bucket=source_bucket, key=source_key, dest_filename=dest_filename)
+            print("Copying gs://{bucket}/{key} to {dest_filename}".format(**api_args))
+            with open(dest_filename, "wb") as fh:
+                escaped_args = {k: requests.compat.quote(v, safe="") for k, v in api_args.items()}
+                res = client.get("b/{bucket}/o/{key}".format(**escaped_args), params=dict(alt="media"), stream=True)
+                while True:
+                    chunk = res.raw.read(1024 * 1024)
+                    if len(chunk) == 0:
+                        break
+                    fh.write(chunk)
+    elif paths[-1].startswith("gs://") and not any(p.startswith("gs://") for p in paths[0:-1]):
+        upload_client = GSUploadClient(config=config)
+        for path in paths[:-1]:
+            _, _, dest_bucket, dest_prefix = paths[-1].split("/", 3)
+            dest_key = dest_prefix
+            # TODO: check if dest_prefix is a prefix on the remote
+            if dest_prefix.endswith("/") or len(paths) > 2:
+                dest_key = os.path.join(dest_prefix, os.path.basename(path))
+            print("Copying {path} to gs://{bucket}/{key}".format(path=path, bucket=dest_bucket, key=dest_key))
+            upload_path = "b/{bucket}/o".format(bucket=requests.compat.quote(dest_bucket))
+            upload_client.post(upload_path, params=dict(uploadType="media", name=dest_key), data=read_file_chunks(path))
+    else:
+        raise click.BadParameter("paths")
+
+cli.add_command(cp)
+
+@click.command()
+@click.argument('paths', nargs=-1, required=True)
+def mv(paths):
+    cp.main(paths, standalone_mode=False)
+    rm(paths[:-1])
+
+cli.add_command(mv)
+
+@click.command()
+@click.argument('paths', nargs=-1, required=True)
+def rm(paths):
+    if not all(p.startswith("gs://") for p in paths):
+        raise click.BadParameter("paths")
+    for path in paths:
+        _, _, bucket, key = path.split("/", 3)
+        print("Deleting gs://{bucket}/{key}".format(bucket=bucket, key=key))
+        client.delete("b/{bucket}/o/{key}".format(bucket=requests.compat.quote(bucket),
+                                                  key=requests.compat.quote(key, safe="")))
+
+cli.add_command(rm)
+
+@click.command()
+@click.argument('paths', nargs=2, required=True)
+def sync(paths):
+    raise NotImplementedError()
+
+cli.add_command(sync)
 
 config = tweak.Config("gs")
 client = GSClient(config=config)
 
-cli.add_command(configure)
-cli.add_command(ls)
 
 if __name__ == '__main__':
     cli()
