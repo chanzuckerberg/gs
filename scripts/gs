@@ -2,7 +2,7 @@
 
 # TODO: https://cloud.google.com/storage/docs/json_api/v1/how-tos/batch
 
-import os, sys, json, textwrap, readline, time, datetime
+import os, sys, json, textwrap, readline, time, datetime, logging
 from argparse import Namespace
 
 import click, tweak, jwt, requests
@@ -70,7 +70,7 @@ class GSClient:
         # TODO: invalidate and refetch before expiration
         if self._oauth2_token is None:
             params = dict(grant_type="urn:ietf:params:oauth:grant-type:jwt-bearer", assertion=self.get_service_jwt())
-            res = requests.post("https://www.googleapis.com/oauth2/v4/token", data=params)
+            res = self.get_session().post("https://www.googleapis.com/oauth2/v4/token", data=params)
             self._oauth2_token = res.json()["access_token"]
         return self._oauth2_token
 
@@ -126,10 +126,11 @@ def ls(path):
         if path.startswith("gs://"):
             path = path[len("gs://"):]
         if "/" not in path:
-            bucket, prefix = path, None
+            bucket, prefix = path, ""
         else:
             bucket, prefix = path.split("/", 1)
         params = dict(delimiter="/")
+        prefix = prefix.rstrip("*")
         if prefix:
             params["prefix"] = prefix
         res = client.get("b/{}/o".format(bucket), params=params)
@@ -257,9 +258,9 @@ def rb(bucket_name):
 
 cli.add_command(rb)
 
-config = tweak.Config("gs")
+config = tweak.Config("gs", save_on_exit=False)
 client = GSClient(config=config)
 
-
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.ERROR)
     cli()
