@@ -8,7 +8,7 @@ tests_require = ["coverage", "flake8", "wheel"]
 
 setup(
     name='gs',
-    version='0.0.6',
+    version='0.0.7',
     url='https://github.com/kislyuk/gs',
     license='Apache Software License',
     author='Andrey Kislyuk',
