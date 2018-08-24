@@ -191,7 +191,7 @@ def cp(paths):
             _, _, dest_bucket, dest_prefix = paths[-1].split("/", 3)
             dest_key = dest_prefix
             # TODO: check if dest_prefix is a prefix on the remote
-            if dest_prefix.endswith("/") or len(paths) > 2:
+            if dest_prefix == "" or dest_prefix.endswith("/") or len(paths) > 2:
                 dest_key = os.path.join(dest_prefix, os.path.basename(path))
             print("Copying {path} to gs://{bucket}/{key}".format(path=path, bucket=dest_bucket, key=dest_key))
             upload_path = "b/{bucket}/o".format(bucket=requests.compat.quote(dest_bucket))
