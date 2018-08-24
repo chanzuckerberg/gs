@@ -53,11 +53,17 @@ class GSClient:
     scope = "https://www.googleapis.com/auth/cloud-platform"
 
     def __init__(self, config, **session_kwargs):
-        self.config = config
+        self._config = config
         self._service_jwt = None
         self._oauth2_token = None
         self._session = None
         self._session_kwargs = session_kwargs
+
+    @property
+    def config(self):
+        if "service_credentials" not in self._config:
+            sys.exit('API credentials not configured. Please run "gs configure" or set GOOGLE_APPLICATION_CREDENTIALS.')
+        return self._config
 
     def get_session(self):
         if self._session is None:
@@ -111,6 +117,9 @@ class GSClient:
     def delete(self, resource, **kwargs):
         return self.request(method="delete", resource=resource, **kwargs)
 
+    def get_project(self):
+        return self.config.service_credentials["project_id"]
+
 class GSUploadClient(GSClient):
     base_url = "https://www.googleapis.com/upload/storage/v1/"
 
@@ -119,7 +128,7 @@ class GSUploadClient(GSClient):
 def ls(path):
     """List buckets or objects in a bucket/prefix."""
     if path is None:
-        res = client.get("b", params=dict(project=config.service_credentials["project_id"]))
+        res = client.get("b", params=dict(project=client.get_project()))
         columns = ["name", "timeCreated", "updated", "location", "storageClass"]
         page_output(tabulate(res["items"], args=Namespace(columns=columns, max_col_width=40)))
     else:
@@ -245,7 +254,7 @@ def mb(bucket_name, storage_class=None, location=None):
         api_params["location"] = location
     if storage_class:
         api_params["storageClass"] = storage_class
-    res = client.post("b", params=dict(project=config.service_credentials["project_id"]), json=api_params)
+    res = client.post("b", params=dict(project=client.get_project()), json=api_params)
     print(json.dumps(res, indent=4))
 
 cli.add_command(mb)
@@ -260,6 +269,11 @@ def rb(bucket_name):
 cli.add_command(rb)
 
 config = tweak.Config("gs", save_on_exit=False)
+if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+    logging.info("Using GOOGLE_APPLICATION_CREDENTIALS file %s", os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
+    with open(os.environ["GOOGLE_APPLICATION_CREDENTIALS"]) as fh:
+        config.service_credentials = json.load(fh)
+
 client = GSClient(config=config)
 
 if __name__ == '__main__':
