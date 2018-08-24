@@ -228,6 +228,7 @@ cli.add_command(rm)
 @click.command()
 @click.argument('paths', nargs=2, required=True)
 def sync(paths):
+    """Sync a directory of files with bucket/prefix."""
     raise NotImplementedError()
 
 cli.add_command(sync)
