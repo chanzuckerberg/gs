@@ -9,6 +9,7 @@ import click, tweak, jwt, requests
 
 from gs.util.printing import page_output, tabulate, GREEN, BLUE, BOLD
 from gs.version import __version__
+from gs.util.exceptions import NoServiceCredentials
 
 @click.group()
 @click.version_option(version=__version__)
@@ -51,19 +52,14 @@ cli.add_command(configure)
 class GSClient:
     base_url = "https://www.googleapis.com/storage/v1/"
     scope = "https://www.googleapis.com/auth/cloud-platform"
+    instance_metadata_url = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
 
     def __init__(self, config, **session_kwargs):
-        self._config = config
+        self.config = config
         self._service_jwt = None
         self._oauth2_token = None
         self._session = None
         self._session_kwargs = session_kwargs
-
-    @property
-    def config(self):
-        if "service_credentials" not in self._config:
-            sys.exit('API credentials not configured. Please run "gs configure" or set GOOGLE_APPLICATION_CREDENTIALS.')
-        return self._config
 
     def get_session(self):
         if self._session is None:
@@ -75,13 +71,30 @@ class GSClient:
     def get_oauth2_token(self):
         # TODO: invalidate and refetch before expiration
         if self._oauth2_token is None:
-            params = dict(grant_type="urn:ietf:params:oauth:grant-type:jwt-bearer", assertion=self.get_service_jwt())
-            res = self.get_session().post("https://www.googleapis.com/oauth2/v4/token", data=params)
+            try:
+                service_jwt = self.get_service_jwt()
+                params = dict(grant_type="urn:ietf:params:oauth:grant-type:jwt-bearer", assertion=service_jwt)
+                res = self.get_session().post("https://www.googleapis.com/oauth2/v4/token", data=params)
+            except NoServiceCredentials:
+                try:
+                    res = requests.get(self.instance_metadata_url)
+                except Exception:
+                    sys.exit('API credentials not configured. Please run "gs configure" '
+                             'or set GOOGLE_APPLICATION_CREDENTIALS.')
             self._oauth2_token = res.json()["access_token"]
         return self._oauth2_token
 
     def get_service_jwt(self):
         if self._service_jwt is None:
+            if "service_credentials" not in self.config:
+                if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+                    logging.info("Using GOOGLE_APPLICATION_CREDENTIALS file %s",
+                                 os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
+                    with open(os.environ["GOOGLE_APPLICATION_CREDENTIALS"]) as fh:
+                        config.service_credentials = json.load(fh)
+                else:
+                    raise NoServiceCredentials()
+
             payload = {
                 'iss': self.config.service_credentials["client_email"],
                 'sub': self.config.service_credentials["client_email"],
@@ -118,7 +131,10 @@ class GSClient:
         return self.request(method="delete", resource=resource, **kwargs)
 
     def get_project(self):
-        return self.config.service_credentials["project_id"]
+        if "GOOGLE_CLOUD_PROJECT" in os.environ:
+            return os.environ["GOOGLE_CLOUD_PROJECT"]
+        elif "service_credentials" in self.config:
+            return self.config.service_credentials["project_id"]
 
 class GSUploadClient(GSClient):
     base_url = "https://www.googleapis.com/upload/storage/v1/"
@@ -269,10 +285,6 @@ def rb(bucket_name):
 cli.add_command(rb)
 
 config = tweak.Config("gs", save_on_exit=False)
-if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
-    logging.info("Using GOOGLE_APPLICATION_CREDENTIALS file %s", os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
-    with open(os.environ["GOOGLE_APPLICATION_CREDENTIALS"]) as fh:
-        config.service_credentials = json.load(fh)
 
 client = GSClient(config=config)
 

@@ -5,3 +5,6 @@ class GSException(Exception):
 
 class GetFieldError(GSException):
     pass
+
+class NoServiceCredentials(GSException):
+    pass
