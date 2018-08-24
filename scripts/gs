@@ -7,7 +7,7 @@ from argparse import Namespace
 
 import click, tweak, jwt, requests
 
-from gs.util.printing import page_output, tabulate, GREEN, BLUE, BOLD
+from gs.util.printing import page_output, tabulate, GREEN, BLUE, BOLD, format_number
 from gs.version import __version__
 from gs.util.exceptions import NoServiceCredentials
 
@@ -167,11 +167,19 @@ cli.add_command(ls)
 
 def read_file_chunks(filename, chunk_size=1024 * 1024):
     with open(filename, "rb") as fh:
-        while True:
-            chunk = fh.read(chunk_size)
-            if len(chunk) == 0:
-                break
-            yield chunk
+        chunk = fh.read(chunk_size)
+        yield chunk
+        chunk = fh.read(chunk_size)
+        if len(chunk) > 0:
+            file_size = os.fstat(fh.fileno()).st_size
+            with click.progressbar(length=file_size) as bar:
+                bar.update(chunk_size)
+                while True:
+                    bar.update(chunk_size)
+                    yield chunk
+                    chunk = fh.read(chunk_size)
+                    if len(chunk) == 0:
+                        break
 
 @click.command()
 @click.argument('paths', nargs=-1, required=True)
@@ -202,15 +210,24 @@ def cp(paths):
             if os.path.isdir(dest_filename) or len(paths) > 2:
                 dest_filename = os.path.join(dest_filename, os.path.basename(source_key))
             api_args = dict(bucket=source_bucket, key=source_key, dest_filename=dest_filename)
-            print("Copying gs://{bucket}/{key} to {dest_filename}".format(**api_args))
             with open(dest_filename, "wb") as fh:
                 escaped_args = {k: requests.compat.quote(v, safe="") for k, v in api_args.items()}
                 res = client.get("b/{bucket}/o/{key}".format(**escaped_args), params=dict(alt="media"), stream=True)
-                while True:
-                    chunk = res.raw.read(1024 * 1024)
-                    if len(chunk) == 0:
-                        break
-                    fh.write(chunk)
+                size = int(res.headers["Content-Length"])
+                print("Copying gs://{bucket}/{key} to {dest_filename} ({size})".format(size=format_number(size),
+                                                                                       **api_args))
+                chunk = res.raw.read(1024 * 1024)
+                fh.write(chunk)
+                chunk = res.raw.read(1024 * 1024)
+                if len(chunk) > 0:
+                    with click.progressbar(length=size) as bar:
+                        bar.update(len(chunk))
+                        while True:
+                            bar.update(len(chunk))
+                            fh.write(chunk)
+                            chunk = res.raw.read(1024 * 1024)
+                            if len(chunk) == 0:
+                                break
     elif paths[-1].startswith("gs://") and not any(p.startswith("gs://") for p in paths[0:-1]):
         upload_client = GSUploadClient(config=config)
         for path in paths[:-1]:

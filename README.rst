@@ -54,7 +54,7 @@ Before making API calls, *gs* ingests API credentials in the following order of 
   credentials from the service account credentials filename referenced by the variable.
 - If that varible is not set, *gs* attempts to load service account credentials previously configured with ``gs configure``
   (stored in ``~/.config/gs/config.json``).
-- If that fails, *gs* attempts to load an OAuth2 token from
+- If that fails, *gs* attempts to load a service account API token from
   `Google instance metadata <https://cloud.google.com/compute/docs/storing-retrieving-metadata>`_.
 - If that fails, *gs* gives up and prints an error.
 
