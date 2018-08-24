@@ -46,6 +46,18 @@ Commands:
 Run ``gs configure`` to configure Google service account access credentials that will be used by the
 ``gs`` command. You can create a new service account key at https://console.cloud.google.com/iam-admin/serviceaccounts.
 
+Credentials
+~~~~~~~~~~~
+Before making API calls, *gs* ingests API credentials in the following order of priority:
+
+- First, *gs* checks if a ``GOOGLE_APPLICATION_CREDENTIALS`` environment variable is set. If so, it attempts to load and use
+  credentials from the service account credentials filename referenced by the variable.
+- If that varible is not set, *gs* attempts to load service account credentials previously configured with ``gs configure``
+  (stored in ``~/.config/gs/config.json``).
+- If that fails, *gs* attempts to load an OAuth2 token from
+  `Google instance metadata <https://cloud.google.com/compute/docs/storing-retrieving-metadata>`_.
+- If that fails, *gs* gives up and prints an error.
+
 .. image:: https://travis-ci.org/kislyuk/gs.png
    :target: https://travis-ci.org/kislyuk/gs
 .. image:: https://img.shields.io/pypi/v/gs.svg
