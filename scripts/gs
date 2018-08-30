@@ -2,8 +2,7 @@
 
 # TODO: https://cloud.google.com/storage/docs/json_api/v1/how-tos/batch
 
-import os, sys, json, textwrap, readline, logging
-
+import os, sys, json, textwrap, readline, logging, fnmatch, mimetypes
 from argparse import Namespace
 
 import click, tweak, requests
@@ -50,6 +49,17 @@ def configure():
 
 cli.add_command(configure)
 
+def parse_bucket_and_prefix(path, require_gs_uri=True):
+    if require_gs_uri:
+        assert path.startswith("gs://")
+    if path.startswith("gs://"):
+        path = path[len("gs://"):]
+    if "/" in path:
+        bucket, prefix = path.split("/", 1)
+    else:
+        bucket, prefix = path, ""
+    return bucket, prefix
+
 @click.command()
 @click.argument('path', required=False)
 @click.option('--max-results', type=int, help="Limit the listing to this many results from the top.")
@@ -62,12 +72,7 @@ def ls(path, max_results=None, width=None, json=False):
         columns = ["name", "timeCreated", "updated", "location", "storageClass"]
         page_output(tabulate(res["items"], args=Namespace(columns=columns, max_col_width=width, json=json)))
     else:
-        if path.startswith("gs://"):
-            path = path[len("gs://"):]
-        if "/" not in path:
-            bucket, prefix = path, ""
-        else:
-            bucket, prefix = path.split("/", 1)
+        bucket, prefix = parse_bucket_and_prefix(path, require_gs_uri=False)
         params = dict(delimiter="/")
         prefix = prefix.rstrip("*")
         if prefix:
@@ -98,14 +103,15 @@ def read_file_chunks(filename, chunk_size=1024 * 1024):
 
 @click.command()
 @click.argument('paths', nargs=-1, required=True)
-def cp(paths):
+@click.option('--content-type', help="Set the content type to this value when uploading (guessed by default).")
+def cp(paths, content_type=None):
     """Copy files to, from, or between buckets."""
     assert len(paths) >= 2
     api_method_template = "b/{source_bucket}/o/{source_key}/copyTo/b/{dest_bucket}/o/{dest_key}"
     if all(p.startswith("gs://") for p in paths):
         for path in paths[:-1]:
-            _, _, source_bucket, source_key = path.split("/", 3)
-            _, _, dest_bucket, dest_prefix = paths[-1].split("/", 3)
+            source_bucket, source_key = parse_bucket_and_prefix(path)
+            dest_bucket, dest_prefix = parse_bucket_and_prefix(paths[-1])
             dest_key = dest_prefix
             # TODO: check if dest_prefix is a prefix on the remote
             if dest_prefix.endswith("/") or len(paths) > 2:
@@ -120,7 +126,7 @@ def cp(paths):
     elif all(p.startswith("gs://") for p in paths[:-1]) and not paths[-1].startswith("gs://"):
         # TODO: support remote wildcards
         for path in paths[:-1]:
-            _, _, source_bucket, source_key = path.split("/", 3)
+            source_bucket, source_key = parse_bucket_and_prefix(path)
             dest_filename = paths[-1]
             if os.path.isdir(dest_filename) or len(paths) > 2:
                 dest_filename = os.path.join(dest_filename, os.path.basename(source_key))
@@ -146,14 +152,22 @@ def cp(paths):
     elif paths[-1].startswith("gs://") and not any(p.startswith("gs://") for p in paths[0:-1]):
         upload_client = GSUploadClient(config=config)
         for path in paths[:-1]:
-            _, _, dest_bucket, dest_prefix = paths[-1].split("/", 3)
+            dest_bucket, dest_prefix = parse_bucket_and_prefix(paths[-1])
             dest_key = dest_prefix
             # TODO: check if dest_prefix is a prefix on the remote
             if dest_prefix == "" or dest_prefix.endswith("/") or len(paths) > 2:
                 dest_key = os.path.join(dest_prefix, os.path.basename(path))
             print("Copying {path} to gs://{bucket}/{key}".format(path=path, bucket=dest_bucket, key=dest_key))
             upload_path = "b/{bucket}/o".format(bucket=requests.compat.quote(dest_bucket))
-            upload_client.post(upload_path, params=dict(uploadType="media", name=dest_key), data=read_file_chunks(path))
+            headers = {}
+            if content_type is None:
+                content_type, content_encoding = mimetypes.guess_type(path)
+            if content_type is not None:
+                headers["Content-Type"] = content_type
+            upload_client.post(upload_path,
+                               params=dict(uploadType="media", name=dest_key),
+                               headers=headers,
+                               data=read_file_chunks(path))
     else:
         raise click.BadParameter("paths")
 

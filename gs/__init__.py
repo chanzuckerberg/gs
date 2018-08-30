@@ -35,10 +35,11 @@ class GSClient:
                 res = self.get_session().post("https://www.googleapis.com/oauth2/v4/token", data=params)
             except NoServiceCredentials:
                 try:
-                    res = requests.get(self.instance_metadata_url)
+                    res = requests.get(self.instance_metadata_url, headers={"Metadata-Flavor": "Google"})
                 except Exception:
                     sys.exit('API credentials not configured. Please run "gs configure" '
                              'or set GOOGLE_APPLICATION_CREDENTIALS.')
+            res.raise_for_status()
             self._oauth2_token = res.json()["access_token"]
         return self._oauth2_token
 
