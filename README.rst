@@ -30,6 +30,8 @@ Commands:
    +------------------+--------------------------------------------------+
    | ``gs cp``        | Copy files to, from, or between buckets.         |
    +------------------+--------------------------------------------------+
+   | ``gs get-url``   | Get a pre-signed URL for accessing an object.    |
+   +------------------+--------------------------------------------------+
    | ``gs ls``        | List buckets or objects in a bucket/prefix.      |
    +------------------+--------------------------------------------------+
    | ``gs mb``        | Create a new bucket.                             |

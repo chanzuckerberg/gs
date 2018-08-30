@@ -1,13 +1,14 @@
-import os, sys, json, datetime, logging
+import os, sys, json, datetime, logging, base64
 
 from gs.util.exceptions import NoServiceCredentials
 
-import jwt, requests
+import requests
 
 logger = logging.getLogger(__name__)
 
 class GSClient:
     base_url = "https://www.googleapis.com/storage/v1/"
+    presigned_url_base = "https://storage.googleapis.com/"
     scope = "https://www.googleapis.com/auth/cloud-platform"
     instance_metadata_url = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
     suppress_paging_warning = False
@@ -63,6 +64,7 @@ class GSClient:
                 'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=60)
             }
             additional_headers = {'kid': self.config.service_credentials["private_key_id"]}
+            import jwt
             self._service_jwt = jwt.encode(payload,
                                            self.config.service_credentials["private_key"],
                                            headers=additional_headers,
@@ -113,6 +115,23 @@ class GSClient:
                 kwargs["params"]["pageToken"] = page["nextPageToken"]
             else:
                 break
+
+    def get_presigned_url(self, bucket, key, expires_at, method="GET", headers=None, content_type=None, md5_b64=""):
+        from cryptography.hazmat.backends import default_backend
+        from cryptography.hazmat.primitives import serialization, hashes
+        from cryptography.hazmat.primitives.asymmetric import padding
+
+        string_to_sign = "\n".join([method, md5_b64, content_type or "", str(int(expires_at))])
+        for header, value in (headers.items() if headers else {}):
+            string_to_sign += "\n" + header + ":" + value
+        string_to_sign += "\n/" + bucket + "/" + key
+        private_key_bytes = self.config.service_credentials["private_key"].encode()
+        private_key = serialization.load_pem_private_key(private_key_bytes, password=None, backend=default_backend())
+        signature = private_key.sign(string_to_sign.encode(), padding.PKCS1v15(), hashes.SHA256())
+        qs = dict(GoogleAccessId=self.config.service_credentials["client_email"],
+                  Expires=str(int(expires_at)),
+                  Signature=base64.b64encode(signature).decode())
+        return self.presigned_url_base + bucket + "/" + key + "?" + requests.compat.urlencode(qs)
 
 class GSUploadClient(GSClient):
     base_url = "https://www.googleapis.com/upload/storage/v1/"

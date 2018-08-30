@@ -8,6 +8,7 @@ from argparse import Namespace
 import click, tweak, requests
 
 from gs import GSClient, GSUploadClient
+from gs.util import Timestamp
 from gs.util.printing import page_output, tabulate, GREEN, BLUE, BOLD, format_number
 from gs.version import __version__
 
@@ -203,6 +204,18 @@ def sync(paths):
     raise NotImplementedError()
 
 cli.add_command(sync)
+
+@click.command()
+@click.argument('path', required=True)
+@click.option('--expires', type=Timestamp, default="1h",
+              help=('Time when or until the presigned URL expires. Examples: 60s, 5m, 1h, 2d, 3w, 2020-01-01, 15:20, '
+                    '1535651591 (seconds since epoch).'))
+def get_url(path, expires=Timestamp("1h")):
+    """Get a presigned URL for accessing an object."""
+    bucket, key = parse_bucket_and_prefix(path)
+    print(client.get_presigned_url(bucket, key, expires_at=expires.timestamp()))
+
+cli.add_command(get_url, name="get-url")
 
 @click.command()
 @click.argument('bucket_name')
