@@ -207,15 +207,15 @@ cli.add_command(sync)
 
 @click.command()
 @click.argument('path', required=True)
-@click.option('--expires', type=Timestamp, default="1h",
+@click.option('--expires-in', type=Timestamp, default="1h",
               help=('Time when or until the presigned URL expires. Examples: 60s, 5m, 1h, 2d, 3w, 2020-01-01, 15:20, '
-                    '1535651591 (seconds since epoch).'))
-def get_url(path, expires=Timestamp("1h")):
-    """Get a presigned URL for accessing an object."""
+                    '1535651591 (seconds since epoch). Default 1h.'))
+def presign(path, expires_in=Timestamp("1h")):
+    """Get a pre-signed URL for accessing an object."""
     bucket, key = parse_bucket_and_prefix(path)
-    print(client.get_presigned_url(bucket, key, expires_at=expires.timestamp()))
+    print(client.get_presigned_url(bucket, key, expires_at=expires_in.timestamp()))
 
-cli.add_command(get_url, name="get-url")
+cli.add_command(presign)
 
 @click.command()
 @click.argument('bucket_name')
