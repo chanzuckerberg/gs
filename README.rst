@@ -67,8 +67,8 @@ Using the Python library interface
     from gs import GSClient
     client = GSClient()
     object_meta = client.get("b/my-bucket/o/my-object")
-    with client.get("b/my-bucket/o/my-object", params=dict(alt="media"), stream=True) as req:
-        object_bytes = req.raw.read()
+    with client.get("b/my-bucket/o/my-object", params=dict(alt="media"), stream=True) as res:
+        object_bytes = res.raw.read()
     presigned_url = client.get_presigned_url("my-bucket", "my-object", expires_at=time.time()+3600)
 
 
