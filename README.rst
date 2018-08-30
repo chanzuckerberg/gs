@@ -1,7 +1,7 @@
 GS: A minimalistic Google Storage client
 ========================================
 
-*gs* is a command line interface (CLI) that provides a set of essential commands for
+*gs* is a command line interface (CLI) and Python library that provides a set of essential commands for
 `Google Cloud Storage <https://cloud.google.com/storage/>`_. It is modeled after the AWS CLI's ``aws s3`` command. Its
 features are:
 
@@ -59,6 +59,18 @@ Before making API calls, *gs* ingests API credentials in the following order of 
 - If that fails, *gs* attempts to load a service account API token from
   `Google instance metadata <https://cloud.google.com/compute/docs/storing-retrieving-metadata>`_.
 - If that fails, *gs* gives up and prints an error.
+
+Using the Python library interface
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. code-block:: python
+
+    from gs import GSClient
+    client = GSClient()
+    object_meta = client.get("b/my-bucket/o/my-object")
+    with client.get("b/my-bucket/o/my-object", params=dict(alt="media"), stream=True) as req:
+        object_bytes = req.raw.read()
+    presigned_url = client.get_presigned_url("my-bucket", "my-object", expires_at=time.time()+3600)
+
 
 .. image:: https://travis-ci.org/kislyuk/gs.png
    :target: https://travis-ci.org/kislyuk/gs
