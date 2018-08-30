@@ -44,8 +44,8 @@ def configure():
             key = json.load(fh)
     else:
         key = json.loads(buf)
-    config.service_credentials = key
-    config.save()
+    client.config.service_credentials = key
+    client.config.save()
     print("Key configuration saved.")
 
 cli.add_command(configure)
@@ -151,7 +151,7 @@ def cp(paths, content_type=None):
                             if len(chunk) == 0:
                                 break
     elif paths[-1].startswith("gs://") and not any(p.startswith("gs://") for p in paths[0:-1]):
-        upload_client = GSUploadClient(config=config)
+        upload_client = GSUploadClient(config=client.config)
         for path in paths[:-1]:
             dest_bucket, dest_prefix = parse_bucket_and_prefix(paths[-1])
             dest_key = dest_prefix
@@ -243,9 +243,7 @@ def rb(bucket_name):
 
 cli.add_command(rb)
 
-config = tweak.Config("gs", save_on_exit=False)
-
-client = GSClient(config=config)
+client = GSClient()
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.WARNING)

@@ -2,7 +2,7 @@ import os, sys, json, datetime, logging, base64
 
 from gs.util.exceptions import NoServiceCredentials
 
-import requests
+import requests, tweak
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,9 @@ class GSClient:
     instance_metadata_url = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
     suppress_paging_warning = False
 
-    def __init__(self, config, **session_kwargs):
+    def __init__(self, config=None, **session_kwargs):
+        if config is None:
+            config = tweak.Config(__name__, save_on_exit=False)
         self.config = config
         self._service_jwt = None
         self._oauth2_token = None
