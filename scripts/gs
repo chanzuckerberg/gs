@@ -222,7 +222,7 @@ cli.add_command(presign)
 @click.option('--location')
 @click.option('--storage-class')
 def mb(bucket_name, storage_class=None, location=None):
-    """Create a new bucket."""
+    """Create a new Google Storage bucket."""
     print("Creating new Google Storage bucket {}".format(bucket_name))
     api_params = dict(name=bucket_name)
     if location:
