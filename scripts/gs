@@ -2,7 +2,7 @@
 
 # TODO: https://cloud.google.com/storage/docs/json_api/v1/how-tos/batch
 
-import os, sys, json, textwrap, readline, logging, fnmatch, mimetypes, datetime
+import os, sys, json, textwrap, readline, logging, fnmatch, mimetypes, datetime, time
 from argparse import Namespace
 
 import click, tweak, requests
@@ -104,7 +104,7 @@ def read_file_chunks(filename, chunk_size=1024 * 1024):
                     if len(chunk) == 0:
                         break
 
-def localize_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024):
+def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024):
     api_args = dict(bucket=bucket, key=key, dest_filename=dest_filename)
     with open(dest_filename, "wb") as fh:
         escaped_args = {k: requests.compat.quote(v, safe="") for k, v in api_args.items()}
@@ -123,6 +123,19 @@ def localize_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024):
                     chunk = res.raw.read(chunk_size)
                     if len(chunk) == 0:
                         break
+    os.utime(dest_filename, times=(time.time(), int(res.headers["X-Goog-Generation"]) // 1000000))
+
+def upload_one_file(path, dest_bucket, dest_key, content_type=None):
+    print("Copying {path} to gs://{bucket}/{key}".format(path=path, bucket=dest_bucket, key=dest_key))
+    headers = {}
+    if content_type is None:
+        content_type, content_encoding = mimetypes.guess_type(path)
+    if content_type is not None:
+        headers["Content-Type"] = content_type
+    upload_client.post("b/{bucket}/o".format(bucket=requests.compat.quote(dest_bucket)),
+                       params=dict(uploadType="media", name=dest_key),
+                       headers=headers,
+                       data=read_file_chunks(path))
 
 @click.command()
 @click.argument('paths', nargs=-1, required=True)
@@ -153,26 +166,15 @@ def cp(paths, content_type=None):
             dest_filename = paths[-1]
             if os.path.isdir(dest_filename) or len(paths) > 2:
                 dest_filename = os.path.join(dest_filename, os.path.basename(source_key))
-                localize_one_file(bucket=source_bucket, key=source_key, dest_filename=dest_filename)
+                download_one_file(bucket=source_bucket, key=source_key, dest_filename=dest_filename)
     elif paths[-1].startswith("gs://") and not any(p.startswith("gs://") for p in paths[0:-1]):
-        upload_client = GSUploadClient(config=client.config)
         for path in paths[:-1]:
             dest_bucket, dest_prefix = parse_bucket_and_prefix(paths[-1])
             dest_key = dest_prefix
             # TODO: check if dest_prefix is a prefix on the remote
             if dest_prefix == "" or dest_prefix.endswith("/") or len(paths) > 2:
                 dest_key = os.path.join(dest_prefix, os.path.basename(path))
-            print("Copying {path} to gs://{bucket}/{key}".format(path=path, bucket=dest_bucket, key=dest_key))
-            upload_path = "b/{bucket}/o".format(bucket=requests.compat.quote(dest_bucket))
-            headers = {}
-            if content_type is None:
-                content_type, content_encoding = mimetypes.guess_type(path)
-            if content_type is not None:
-                headers["Content-Type"] = content_type
-            upload_client.post(upload_path,
-                               params=dict(uploadType="media", name=dest_key),
-                               headers=headers,
-                               data=read_file_chunks(path))
+            upload_one_file(path, dest_bucket, dest_key, content_type=content_type)
     else:
         raise click.BadParameter("paths")
 
@@ -214,14 +216,31 @@ def sync(paths):
                 local_path = os.path.join(dest, remote_object["name"])
                 local_size = os.path.getsize(local_path)
                 local_mtime = datetime.datetime.utcfromtimestamp(os.path.getmtime(local_path))
-                remote_mtime = dateutil_parse(remote_object["updated"]).replace(tzinfo=None)
+                remote_mtime = dateutil_parse(remote_object["updated"]).replace(tzinfo=None, microsecond=0)
                 if local_size == int(remote_object["size"]) and remote_mtime <= local_mtime:
                     logger.debug("sync:%s:%s: size/mtime match, skipping", src, local_path)
                     continue
             except OSError:
                 pass
             makedirs(os.path.dirname(local_path), exist_ok=True)
-            localize_one_file(bucket, remote_object["name"], local_path)
+            download_one_file(bucket, remote_object["name"], local_path)
+    elif dest.startswith("gs://") and not src.startswith("gs://"):
+        bucket, prefix = parse_bucket_and_prefix(dest)
+        for root, dirs, files in os.walk(src):
+            for filename in files:
+                local_path = os.path.join(root, filename)
+                local_size = os.path.getsize(local_path)
+                local_mtime = datetime.datetime.utcfromtimestamp(os.path.getmtime(local_path))
+                remote_path = os.path.join(prefix, os.path.relpath(root, src).lstrip("./"), filename)
+                try:
+                    remote_object = client.get("b/{}/o/{}".format(bucket, requests.compat.quote(remote_path, safe="")))
+                    remote_mtime = dateutil_parse(remote_object["updated"]).replace(tzinfo=None, microsecond=0)
+                    if local_size == int(remote_object["size"]) and remote_mtime >= local_mtime:
+                        logger.debug("sync:%s:%s: size/mtime match, skipping", local_path, dest)
+                        continue
+                except requests.exceptions.HTTPError:
+                    pass
+                upload_one_file(local_path, bucket, remote_path)
     else:
         raise click.BadParameter("Expected a local directory and a gs:// URL or vice versa")
 
@@ -266,6 +285,7 @@ def rb(bucket_name):
 cli.add_command(rb)
 
 client = GSClient()
+upload_client = GSUploadClient(config=client.config)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.WARNING)
