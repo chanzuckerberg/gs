@@ -104,23 +104,23 @@ def read_file_chunks(filename, chunk_size=1024 * 1024):
                     if len(chunk) == 0:
                         break
 
-def localize_one_file(bucket, key, dest_filename):
+def localize_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024):
     api_args = dict(bucket=bucket, key=key, dest_filename=dest_filename)
     with open(dest_filename, "wb") as fh:
         escaped_args = {k: requests.compat.quote(v, safe="") for k, v in api_args.items()}
         res = client.get("b/{bucket}/o/{key}".format(**escaped_args), params=dict(alt="media"), stream=True)
         size = int(res.headers["Content-Length"])
         print("Copying gs://{bucket}/{key} to {dest_filename} ({size})".format(size=format_number(size), **api_args))
-        chunk = res.raw.read(1024 * 1024)
+        chunk = res.raw.read(chunk_size)
         fh.write(chunk)
-        chunk = res.raw.read(1024 * 1024)
+        chunk = res.raw.read(chunk_size)
         if len(chunk) > 0:
             with click.progressbar(length=size) as bar:
                 bar.update(len(chunk))
                 while True:
                     bar.update(len(chunk))
                     fh.write(chunk)
-                    chunk = res.raw.read(1024 * 1024)
+                    chunk = res.raw.read(chunk_size)
                     if len(chunk) == 0:
                         break
 
