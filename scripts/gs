@@ -2,13 +2,15 @@
 
 # TODO: https://cloud.google.com/storage/docs/json_api/v1/how-tos/batch
 
-import os, sys, json, textwrap, readline, logging, fnmatch, mimetypes
+import os, sys, json, textwrap, readline, logging, fnmatch, mimetypes, datetime
 from argparse import Namespace
 
 import click, tweak, requests
+from dateutil.parser import parse as dateutil_parse
 
-from gs import GSClient, GSUploadClient
+from gs import GSClient, GSUploadClient, logger
 from gs.util import Timestamp
+from gs.util.compat import makedirs
 from gs.util.printing import page_output, tabulate, GREEN, BLUE, BOLD, format_number
 from gs.version import __version__
 
@@ -102,6 +104,26 @@ def read_file_chunks(filename, chunk_size=1024 * 1024):
                     if len(chunk) == 0:
                         break
 
+def localize_one_file(bucket, key, dest_filename):
+    api_args = dict(bucket=bucket, key=key, dest_filename=dest_filename)
+    with open(dest_filename, "wb") as fh:
+        escaped_args = {k: requests.compat.quote(v, safe="") for k, v in api_args.items()}
+        res = client.get("b/{bucket}/o/{key}".format(**escaped_args), params=dict(alt="media"), stream=True)
+        size = int(res.headers["Content-Length"])
+        print("Copying gs://{bucket}/{key} to {dest_filename} ({size})".format(size=format_number(size), **api_args))
+        chunk = res.raw.read(1024 * 1024)
+        fh.write(chunk)
+        chunk = res.raw.read(1024 * 1024)
+        if len(chunk) > 0:
+            with click.progressbar(length=size) as bar:
+                bar.update(len(chunk))
+                while True:
+                    bar.update(len(chunk))
+                    fh.write(chunk)
+                    chunk = res.raw.read(1024 * 1024)
+                    if len(chunk) == 0:
+                        break
+
 @click.command()
 @click.argument('paths', nargs=-1, required=True)
 @click.option('--content-type', help="Set the content type to this value when uploading (guessed by default).")
@@ -131,25 +153,7 @@ def cp(paths, content_type=None):
             dest_filename = paths[-1]
             if os.path.isdir(dest_filename) or len(paths) > 2:
                 dest_filename = os.path.join(dest_filename, os.path.basename(source_key))
-            api_args = dict(bucket=source_bucket, key=source_key, dest_filename=dest_filename)
-            with open(dest_filename, "wb") as fh:
-                escaped_args = {k: requests.compat.quote(v, safe="") for k, v in api_args.items()}
-                res = client.get("b/{bucket}/o/{key}".format(**escaped_args), params=dict(alt="media"), stream=True)
-                size = int(res.headers["Content-Length"])
-                print("Copying gs://{bucket}/{key} to {dest_filename} ({size})".format(size=format_number(size),
-                                                                                       **api_args))
-                chunk = res.raw.read(1024 * 1024)
-                fh.write(chunk)
-                chunk = res.raw.read(1024 * 1024)
-                if len(chunk) > 0:
-                    with click.progressbar(length=size) as bar:
-                        bar.update(len(chunk))
-                        while True:
-                            bar.update(len(chunk))
-                            fh.write(chunk)
-                            chunk = res.raw.read(1024 * 1024)
-                            if len(chunk) == 0:
-                                break
+                localize_one_file(bucket=source_bucket, key=source_key, dest_filename=dest_filename)
     elif paths[-1].startswith("gs://") and not any(p.startswith("gs://") for p in paths[0:-1]):
         upload_client = GSUploadClient(config=client.config)
         for path in paths[:-1]:
@@ -188,7 +192,7 @@ cli.add_command(mv)
 def rm(paths):
     """Delete objects (files) from buckets."""
     if not all(p.startswith("gs://") for p in paths):
-        raise click.BadParameter("paths")
+        raise click.BadParameter("All paths must start with gs://")
     for path in paths:
         _, _, bucket, key = path.split("/", 3)
         print("Deleting gs://{bucket}/{key}".format(bucket=bucket, key=key))
@@ -201,7 +205,25 @@ cli.add_command(rm)
 @click.argument('paths', nargs=2, required=True)
 def sync(paths):
     """Sync a directory of files with bucket/prefix."""
-    raise NotImplementedError()
+    src, dest = paths
+    if src.startswith("gs://") and not dest.startswith("gs://"):
+        bucket, prefix = parse_bucket_and_prefix(src)
+        items = client.list("b/{}/o".format(bucket), params=dict())
+        for remote_object in items:
+            try:
+                local_path = os.path.join(dest, remote_object["name"])
+                local_size = os.path.getsize(local_path)
+                local_mtime = datetime.datetime.utcfromtimestamp(os.path.getmtime(local_path))
+                remote_mtime = dateutil_parse(remote_object["updated"]).replace(tzinfo=None)
+                if local_size == int(remote_object["size"]) and remote_mtime <= local_mtime:
+                    logger.debug("sync:%s:%s: size/mtime match, skipping", src, local_path)
+                    continue
+            except OSError:
+                pass
+            makedirs(os.path.dirname(local_path), exist_ok=True)
+            localize_one_file(bucket, remote_object["name"], local_path)
+    else:
+        raise click.BadParameter("Expected a local directory and a gs:// URL or vice versa")
 
 cli.add_command(sync)
 
