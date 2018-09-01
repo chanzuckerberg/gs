@@ -8,6 +8,10 @@ features are:
 * Python 3 compatibility
 * A minimalistic set of dependencies
 * A tiny footprint
+* Intuitive convention-driven configuration of API credentials without browser login prompts
+* Checksum validation to detect end-to-end data corruption in uploads and downloads
+* An attractive paging and table layout interface
+* A JSON object metadata output mode for feeding data to other utilities
 
 Installation
 ~~~~~~~~~~~~

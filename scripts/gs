@@ -2,7 +2,7 @@
 
 # TODO: https://cloud.google.com/storage/docs/json_api/v1/how-tos/batch
 
-import os, sys, json, textwrap, readline, logging, fnmatch, mimetypes, datetime, time
+import os, sys, json, textwrap, readline, logging, fnmatch, mimetypes, datetime, time, base64, hashlib
 from argparse import Namespace
 
 import click, tweak, requests
@@ -88,10 +88,11 @@ def ls(path, max_results=None, width=None, json=False):
 
 cli.add_command(ls)
 
-def read_file_chunks(filename, chunk_size=1024 * 1024):
+def read_file_chunks(filename, hasher, chunk_size=1024 * 1024):
     with open(filename, "rb") as fh:
         chunk = fh.read(chunk_size)
         yield chunk
+        hasher.update(chunk)
         chunk = fh.read(chunk_size)
         if len(chunk) > 0:
             file_size = os.fstat(fh.fileno()).st_size
@@ -100,19 +101,22 @@ def read_file_chunks(filename, chunk_size=1024 * 1024):
                 while True:
                     bar.update(chunk_size)
                     yield chunk
+                    hasher.update(chunk)
                     chunk = fh.read(chunk_size)
                     if len(chunk) == 0:
                         break
 
 def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024):
     api_args = dict(bucket=bucket, key=key, dest_filename=dest_filename)
-    with open(dest_filename, "wb") as fh:
+    with open(dest_filename + ".gsdownload", "wb") as fh:
         escaped_args = {k: requests.compat.quote(v, safe="") for k, v in api_args.items()}
         res = client.get("b/{bucket}/o/{key}".format(**escaped_args), params=dict(alt="media"), stream=True)
+        checksums = requests.utils.parse_dict_header(res.headers["X-Goog-Hash"])
         size = int(res.headers["Content-Length"])
         print("Copying gs://{bucket}/{key} to {dest_filename} ({size})".format(size=format_number(size), **api_args))
         chunk = res.raw.read(chunk_size)
         fh.write(chunk)
+        hasher = hashlib.md5(chunk)
         chunk = res.raw.read(chunk_size)
         if len(chunk) > 0:
             with click.progressbar(length=size) as bar:
@@ -120,10 +124,14 @@ def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024):
                 while True:
                     bar.update(len(chunk))
                     fh.write(chunk)
+                    hasher.update(chunk)
                     chunk = res.raw.read(chunk_size)
                     if len(chunk) == 0:
                         break
-    os.utime(dest_filename, times=(time.time(), int(res.headers["X-Goog-Generation"]) // 1000000))
+    if "md5" in checksums:
+        assert hasher.digest() == base64.b64decode(checksums["md5"])
+    os.rename(dest_filename + ".gsdownload", dest_filename)
+    os.utime(dest_filename, (time.time(), int(res.headers["X-Goog-Generation"]) // 1000000))
 
 def upload_one_file(path, dest_bucket, dest_key, content_type=None):
     print("Copying {path} to gs://{bucket}/{key}".format(path=path, bucket=dest_bucket, key=dest_key))
@@ -132,10 +140,15 @@ def upload_one_file(path, dest_bucket, dest_key, content_type=None):
         content_type, content_encoding = mimetypes.guess_type(path)
     if content_type is not None:
         headers["Content-Type"] = content_type
-    upload_client.post("b/{bucket}/o".format(bucket=requests.compat.quote(dest_bucket)),
-                       params=dict(uploadType="media", name=dest_key),
-                       headers=headers,
-                       data=read_file_chunks(path))
+    hasher = hashlib.md5()
+    res = upload_client.post("b/{bucket}/o".format(bucket=requests.compat.quote(dest_bucket)),
+                             params=dict(uploadType="media", name=dest_key),
+                             headers=headers,
+                             data=read_file_chunks(path, hasher))
+    if hasher.digest() != base64.b64decode(res["md5Hash"]):
+        client.delete("b/{bucket}/o/{key}".format(bucket=requests.compat.quote(dest_bucket),
+                                                  key=requests.compat.quote(dest_key, safe="")))
+        raise Exception("Upload checksum mismatch in {}".format(dest_key))
 
 @click.command()
 @click.argument('paths', nargs=-1, required=True)
