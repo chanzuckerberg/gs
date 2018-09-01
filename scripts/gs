@@ -10,7 +10,7 @@ from dateutil.parser import parse as dateutil_parse
 
 from gs import GSClient, GSUploadClient, logger
 from gs.util import Timestamp
-from gs.util.compat import makedirs
+from gs.util.compat import makedirs, input
 from gs.util.printing import page_output, tabulate, GREEN, BLUE, BOLD, format_number
 from gs.version import __version__
 

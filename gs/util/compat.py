@@ -8,6 +8,7 @@ if USING_PYTHON2:
     from StringIO import StringIO
     from repr import Repr
     str = unicode # noqa
+    input = raw_input
     from ..packages.backports.functools_lru_cache import lru_cache
     from ..packages.backports.shutil_get_terminal_size import get_terminal_size
     from ..packages.backports.tempfile import TemporaryDirectory
@@ -41,6 +42,7 @@ else:
     from io import StringIO
     from reprlib import Repr
     str = str
+    input = input
     from functools import lru_cache
     from shutil import get_terminal_size
     from tempfile import TemporaryDirectory
