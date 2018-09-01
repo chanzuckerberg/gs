@@ -88,7 +88,7 @@ def ls(path, max_results=None, width=None, json=False):
 
 cli.add_command(ls)
 
-def read_file_chunks(filename, hasher, chunk_size=1024 * 1024):
+def read_file_chunks(filename, hasher, chunk_size=1024 * 1024, progressbar=None):
     with open(filename, "rb") as fh:
         chunk = fh.read(chunk_size)
         yield chunk
@@ -96,7 +96,9 @@ def read_file_chunks(filename, hasher, chunk_size=1024 * 1024):
         chunk = fh.read(chunk_size)
         if len(chunk) > 0:
             file_size = os.fstat(fh.fileno()).st_size
-            with click.progressbar(length=file_size) as bar:
+            if progressbar is None:
+                progressbar = click.progressbar(length=file_size)
+            with progressbar as bar:
                 bar.update(chunk_size)
                 while True:
                     bar.update(chunk_size)
@@ -108,18 +110,38 @@ def read_file_chunks(filename, hasher, chunk_size=1024 * 1024):
 
 def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024):
     api_args = dict(bucket=bucket, key=key, dest_filename=dest_filename)
-    with open(dest_filename + ".gsdownload", "wb") as fh:
-        escaped_args = {k: requests.compat.quote(v, safe="") for k, v in api_args.items()}
-        res = client.get("b/{bucket}/o/{key}".format(**escaped_args), params=dict(alt="media"), stream=True)
-        checksums = requests.utils.parse_dict_header(res.headers["X-Goog-Hash"])
-        size = int(res.headers["Content-Length"])
+    staging_filename = dest_filename + ".gsdownload"
+    hasher, checksums, req_headers, progressbar, resume_pos = hashlib.md5(), None, {}, None, 0
+    escaped_args = {k: requests.compat.quote(v, safe="") for k, v in api_args.items()}
+    if os.path.exists(staging_filename) and os.path.getsize(staging_filename) > chunk_size:
+        logger.info("Checking partial download of %s", dest_filename)
+        res = client.get("b/{bucket}/o/{key}".format(**escaped_args))
+        checksums = {"md5": res["md5Hash"], "crc32c": res["crc32c"]}
+        size = int(res["size"])
+        progressbar = click.progressbar(length=size, fill_char=">")
+        for chunk in read_file_chunks(staging_filename, hasher, progressbar=progressbar):
+            resume_pos += len(chunk)
+        req_headers.update(Range="bytes={}-{}".format(resume_pos, resume_pos + size))
+        logger.info("Resuming download from %d", resume_pos)
+    with open(dest_filename + ".gsdownload", "ab") as fh:
+        res = client.get("b/{bucket}/o/{key}".format(**escaped_args),
+                         params=dict(alt="media"),
+                         headers=req_headers,
+                         stream=True)
+        if checksums is None:
+            checksums = requests.utils.parse_dict_header(res.headers["X-Goog-Hash"])
+            size = int(res.headers["Content-Length"])
         print("Copying gs://{bucket}/{key} to {dest_filename} ({size})".format(size=format_number(size), **api_args))
         chunk = res.raw.read(chunk_size)
         fh.write(chunk)
-        hasher = hashlib.md5(chunk)
+        hasher.update(chunk)
         chunk = res.raw.read(chunk_size)
         if len(chunk) > 0:
-            with click.progressbar(length=size) as bar:
+            if progressbar is None:
+                progressbar = click.progressbar(length=size)
+            else:
+                progressbar.fill_char = "#"
+            with progressbar as bar:
                 bar.update(len(chunk))
                 while True:
                     bar.update(len(chunk))
@@ -301,5 +323,5 @@ client = GSClient()
 upload_client = GSUploadClient(config=client.config)
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.WARNING)
+    logging.basicConfig(level=logging.INFO)
     cli()
