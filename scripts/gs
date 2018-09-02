@@ -181,9 +181,7 @@ def upload_one_file(path, dest_bucket, dest_key, content_type=None):
 @click.option('--content-type', help="Set the content type to this value when uploading (guessed by default).")
 def cp(paths, content_type=None):
     """
-    Copy files to, from, or between buckets.
-
-    Examples:
+    Copy files to, from, or between buckets. Examples:
 
       gs cp * gs://my-bucket/my-prefix/
 
