@@ -9,7 +9,7 @@ features are:
 * A minimalistic set of dependencies
 * A tiny footprint
 * Intuitive convention-driven configuration of API credentials without browser login prompts
-* Checksum validation to detect end-to-end data corruption in uploads and downloads
+* Checksum validation to ensure end-to-end data integrity in uploads and downloads
 * Progress bars for long-running upload and download operations
 * Resumable downloads
 * An attractive paging and table layout interface
