@@ -120,11 +120,11 @@ def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024):
         res = client.get("b/{bucket}/o/{key}".format(**escaped_args))
         checksums = {"md5": res["md5Hash"], "crc32c": res["crc32c"]}
         size = int(res["size"])
-        progressbar = click.progressbar(length=size, fill_char=">")
+        progressbar = click.progressbar(length=size, fill_char=">", file=sys.stderr)
         for chunk in read_file_chunks(staging_filename, hasher, progressbar=progressbar):
             resume_pos += len(chunk)
         req_headers.update(Range="bytes={}-{}".format(resume_pos, resume_pos + size))
-        logger.info("Resuming download from %d", resume_pos)
+        logger.info("Resuming download from %s", format_number(resume_pos))
     with open(staging_filename, "ab") as fh:
         res = client.get("b/{bucket}/o/{key}".format(**escaped_args),
                          params=dict(alt="media"),
@@ -141,7 +141,7 @@ def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024):
         chunk = res.raw.read(chunk_size)
         if len(chunk) > 0:
             if progressbar is None:
-                progressbar = click.progressbar(length=size)
+                progressbar = click.progressbar(length=size, file=sys.stderr)
             else:
                 progressbar.fill_char = "#"
             with progressbar as bar:
