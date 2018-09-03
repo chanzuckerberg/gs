@@ -2,7 +2,7 @@
 
 # TODO: https://cloud.google.com/storage/docs/json_api/v1/how-tos/batch
 
-import os, sys, json, textwrap, readline, logging, fnmatch, mimetypes, datetime, time, base64, hashlib
+import os, sys, json, textwrap, logging, fnmatch, mimetypes, datetime, time, base64, hashlib
 from argparse import Namespace
 
 import click, tweak, requests
@@ -10,7 +10,7 @@ from dateutil.parser import parse as dateutil_parse
 
 from . import GSClient, GSUploadClient, logger
 from .util import Timestamp
-from .util.compat import makedirs, input
+from .util.compat import makedirs
 from .util.printing import page_output, tabulate, GREEN, BLUE, BOLD, format_number
 from .version import __version__
 
@@ -23,14 +23,15 @@ def cli():
 @click.command()
 def configure():
     """Set gs config options, including the API key."""
+    from prompt_toolkit import prompt
     msg = ("Please open " + BOLD("https://console.cloud.google.com/iam-admin/serviceaccounts") + ", create a service "
            "account and download its private key. The service account should have a role with Google Storage access. "
            "Drag & drop the key file into this terminal window, or paste the file location or JSON contents below.")
     print("\n".join(textwrap.wrap(msg, 120)))
-    prompt = "Service account key file path or contents: "
+    prompt_msg = "Service account key file path or contents: "
     buf, filename = "", None
     while True:
-        line = input(prompt).strip()
+        line = prompt(prompt_msg).strip()
         if line == "":
             if buf == "":
                 continue
@@ -41,7 +42,7 @@ def configure():
         buf += line
         if line == "}":
             break
-        prompt = ""
+        prompt_msg = ""
     if filename:
         with open(filename) as fh:
             key = json.load(fh)
