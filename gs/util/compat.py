@@ -8,7 +8,7 @@ if USING_PYTHON2:
     from StringIO import StringIO
     from repr import Repr
     str = unicode # noqa
-    input = raw_input
+    input = raw_input # noqa
     from ..packages.backports.functools_lru_cache import lru_cache
     from ..packages.backports.shutil_get_terminal_size import get_terminal_size
     from ..packages.backports.tempfile import TemporaryDirectory

@@ -1,0 +1,19 @@
+steps:
+- name: python:3.7-stretch
+  args: &test_script
+    - bash
+    - -c
+    - >
+      set -eo pipefail;
+      export GCP_PROJ_URL=http://metadata.google.internal/computeMetadata/v1/project/project-id;
+      export GOOGLE_CLOUD_PROJECT=$$(curl $$GCP_PROJ_URL);
+      pip install --quiet codecov flake8;
+      python --version;
+      make test;
+      gs ls
+- name: python:2.7-stretch
+  args: *test_script
+- name: python:3.4-stretch
+  args: *test_script
+
+timeout: 600s
