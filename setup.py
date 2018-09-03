@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os, glob
+import os, sys
 from setuptools import setup, find_packages
 
 install_requires = [line.rstrip() for line in open(os.path.join(os.path.dirname(__file__), "requirements.txt"))]
@@ -18,7 +18,11 @@ setup(
     install_requires=install_requires,
     tests_require=tests_require,
     packages=find_packages(exclude=['test']),
-    scripts=glob.glob('scripts/*'),
+    entry_points={
+        'console_scripts': [
+            'gs=gs.cli:cli'
+        ],
+    },
     platforms=['MacOS X', 'Posix'],
     include_package_data=True,
     test_suite='test',

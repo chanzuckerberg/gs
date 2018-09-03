@@ -9,8 +9,7 @@ steps:
       export GOOGLE_CLOUD_PROJECT=$$(curl $$GCP_PROJ_URL);
       pip install --quiet codecov flake8;
       python --version;
-      make test;
-      gs ls
+      make test
 - name: python:2.7-stretch
   args: *test_script
 - name: python:3.4-stretch

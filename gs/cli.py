@@ -8,16 +8,17 @@ from argparse import Namespace
 import click, tweak, requests
 from dateutil.parser import parse as dateutil_parse
 
-from gs import GSClient, GSUploadClient, logger
-from gs.util import Timestamp
-from gs.util.compat import makedirs, input
-from gs.util.printing import page_output, tabulate, GREEN, BLUE, BOLD, format_number
-from gs.version import __version__
+from . import GSClient, GSUploadClient, logger
+from .util import Timestamp
+from .util.compat import makedirs, input
+from .util.printing import page_output, tabulate, GREEN, BLUE, BOLD, format_number
+from .version import __version__
 
 @click.group()
 @click.version_option(version=__version__)
 def cli():
     """gs is a minimalistic CLI for Google Cloud Storage."""
+    logging.basicConfig(level=logging.INFO)
 
 @click.command()
 def configure():
@@ -339,7 +340,3 @@ cli.add_command(rb)
 
 client = GSClient()
 upload_client = GSUploadClient(config=client.config)
-
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
-    cli()
