@@ -77,6 +77,24 @@ Using the Python library interface
         object_bytes = res.raw.read()
     presigned_url = client.get_presigned_url("my-bucket", "my-object", expires_at=time.time()+3600)
 
+Authors
+-------
+* Andrey Kislyuk
+
+Links
+-----
+* `Project home page (GitHub) <https://github.com/kislyuk/gs>`_
+* `Package distribution (PyPI) <https://pypi.python.org/pypi/gs>`_
+* `Change log <https://github.com/kislyuk/gs/blob/master/Changes.rst>`_
+* `GCB builds <https://console.cloud.google.com/cloud-build/builds>`_
+
+Bugs
+~~~~
+Please report bugs, issues, feature requests, etc. on `GitHub <https://github.com/kislyuk/gs/issues>`_.
+
+License
+-------
+Licensed under the terms of the `Apache License, Version 2.0 <http://www.apache.org/licenses/LICENSE-2.0>`_.
 
 .. image:: https://travis-ci.org/kislyuk/gs.png
    :target: https://travis-ci.org/kislyuk/gs
