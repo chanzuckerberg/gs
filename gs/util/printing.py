@@ -8,56 +8,58 @@ from .compat import str, get_terminal_size
 
 USING_PYTHON2 = True if sys.version_info < (3, 0) else False
 
+ANSI_OK = True if sys.stdout.isatty() and os.name != "nt" else False
+
 def CYAN(message=None):
     if message is None:
-        return "\033[36m" if sys.stdout.isatty() else ""
+        return "\033[36m" if ANSI_OK else ""
     else:
         return CYAN() + message + ENDC()
 
 def BLUE(message=None):
     if message is None:
-        return "\033[34m" if sys.stdout.isatty() else ""
+        return "\033[34m" if ANSI_OK else ""
     else:
         return BLUE() + message + ENDC()
 
 def YELLOW(message=None):
     if message is None:
-        return "\033[33m" if sys.stdout.isatty() else ""
+        return "\033[33m" if ANSI_OK else ""
     else:
         return YELLOW() + message + ENDC()
 
 def GREEN(message=None):
     if message is None:
-        return "\033[32m" if sys.stdout.isatty() else ""
+        return "\033[32m" if ANSI_OK else ""
     else:
         return GREEN() + message + ENDC()
 
 def RED(message=None):
     if message is None:
-        return "\033[31m" if sys.stdout.isatty() else ""
+        return "\033[31m" if ANSI_OK else ""
     else:
         return RED() + message + ENDC()
 
 def WHITE(message=None):
     if message is None:
-        return "\033[37m" if sys.stdout.isatty() else ""
+        return "\033[37m" if ANSI_OK else ""
     else:
         return WHITE() + message + ENDC()
 
 def UNDERLINE(message=None):
     if message is None:
-        return "\033[4m" if sys.stdout.isatty() else ""
+        return "\033[4m" if ANSI_OK else ""
     else:
         return UNDERLINE() + message + ENDC()
 
 def BOLD(message=None):
     if message is None:
-        return "\033[1m" if sys.stdout.isatty() else ""
+        return "\033[1m" if ANSI_OK else ""
     else:
         return BOLD() + message + ENDC()
 
 def ENDC():
-    return "\033[0m" if sys.stdout.isatty() else ""
+    return "\033[0m" if ANSI_OK else ""
 
 def border(i):
     return WHITE() + i + ENDC()

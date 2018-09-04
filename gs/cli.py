@@ -24,6 +24,7 @@ def cli():
 def configure():
     """Set gs config options, including the API key."""
     from prompt_toolkit import prompt
+    from prompt_toolkit.completion.filesystem import PathCompleter
     msg = ("Please open " + BOLD("https://console.cloud.google.com/iam-admin/serviceaccounts") + ", create a service "
            "account and download its private key. The service account should have a role with Google Storage access. "
            "Drag & drop the key file into this terminal window, or paste the file location or JSON contents below.")
@@ -31,7 +32,7 @@ def configure():
     prompt_msg = "Service account key file path or contents: "
     buf, filename = "", None
     while True:
-        line = prompt(prompt_msg).strip()
+        line = prompt(prompt_msg, completer=PathCompleter()).strip()
         if line == "":
             if buf == "":
                 continue
