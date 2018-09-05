@@ -125,14 +125,17 @@ def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024, tmp_su
     if os.path.exists(staging_filename) and os.path.getsize(staging_filename) > chunk_size:
         logger.info("Checking partial download of %s", dest_filename)
         res = client.get("b/{bucket}/o/{key}".format(**escaped_args))
-        checksums = {"md5": res["md5Hash"], "crc32c": res["crc32c"]}
-        size = int(res["size"])
-        progressbar = click.progressbar(length=size, fill_char=">", file=sys.stderr)
-        for chunk in read_file_chunks(staging_filename, hasher, progressbar=progressbar):
-            resume_pos += len(chunk)
-        req_headers.update(Range="bytes={}-{}".format(resume_pos, resume_pos + size))
-        logger.info("Resuming download from %s", format_number(resume_pos))
-    with open(staging_filename, "ab") as fh:
+        if "md5hash" in res:
+            checksums = {"md5": res["md5Hash"], "crc32c": res["crc32c"]}
+            size = int(res["size"])
+            progressbar = click.progressbar(length=size, fill_char=">", file=sys.stderr)
+            for chunk in read_file_chunks(staging_filename, hasher, progressbar=progressbar):
+                resume_pos += len(chunk)
+            req_headers.update(Range="bytes={}-{}".format(resume_pos, resume_pos + size))
+            logger.info("Resuming download from %s", format_number(resume_pos))
+        else:
+            logger.info("Unable to resume composite object download, restarting")
+    with open(staging_filename, "ab" if checksums else "wb") as fh:
         res = client.get("b/{bucket}/o/{key}".format(**escaped_args),
                          params=dict(alt="media"),
                          headers=req_headers,
