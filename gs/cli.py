@@ -9,7 +9,7 @@ import click, tweak, requests
 from dateutil.parser import parse as dateutil_parse
 
 from . import GSClient, GSUploadClient, logger
-from .util import Timestamp
+from .util import Timestamp, CRC32C
 from .util.compat import makedirs
 from .util.printing import page_output, tabulate, GREEN, BLUE, BOLD, format_number
 from .version import __version__
@@ -120,21 +120,19 @@ def read_file_chunks(filename, hasher, chunk_size=1024 * 1024, progressbar=None)
 def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024, tmp_suffix=".gsdownload"):
     api_args = dict(bucket=bucket, key=key, dest_filename=dest_filename)
     staging_filename = "/dev/stdout" if dest_filename == "-" else dest_filename + tmp_suffix
-    hasher, checksums, req_headers, progressbar, resume_pos = hashlib.md5(), None, {}, None, 0
+    hasher, checksums, req_headers, progressbar, resume_pos = None, None, {}, None, 0
     escaped_args = {k: requests.compat.quote(v, safe="") for k, v in api_args.items()}
     if os.path.exists(staging_filename) and os.path.getsize(staging_filename) > chunk_size:
         logger.info("Checking partial download of %s", dest_filename)
         res = client.get("b/{bucket}/o/{key}".format(**escaped_args))
-        if "md5hash" in res:
-            checksums = {"md5": res["md5Hash"], "crc32c": res["crc32c"]}
-            size = int(res["size"])
-            progressbar = click.progressbar(length=size, fill_char=">", file=sys.stderr)
-            for chunk in read_file_chunks(staging_filename, hasher, progressbar=progressbar):
-                resume_pos += len(chunk)
-            req_headers.update(Range="bytes={}-{}".format(resume_pos, resume_pos + size))
-            logger.info("Resuming download from %s", format_number(resume_pos))
-        else:
-            logger.info("Unable to resume composite object download, restarting")
+        checksums = {"md5": res.get("md5Hash"), "crc32c": res["crc32c"]}
+        size = int(res["size"])
+        progressbar = click.progressbar(length=size, fill_char=">", file=sys.stderr)
+        hasher = hashlib.md5() if "md5" in checksums else CRC32C()
+        for chunk in read_file_chunks(staging_filename, hasher, progressbar=progressbar):
+            resume_pos += len(chunk)
+        req_headers.update(Range="bytes={}-{}".format(resume_pos, resume_pos + size))
+        logger.info("Resuming download from %s", format_number(resume_pos))
     with open(staging_filename, "ab" if checksums else "wb") as fh:
         res = client.get("b/{bucket}/o/{key}".format(**escaped_args),
                          params=dict(alt="media"),
@@ -143,6 +141,7 @@ def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024, tmp_su
         if checksums is None:
             checksums = requests.utils.parse_dict_header(res.headers["X-Goog-Hash"])
             size = int(res.headers["Content-Length"])
+            hasher = hashlib.md5() if "md5" in checksums else CRC32C()
         logger.info("Copying gs://{bucket}/{key} to {dest_filename} ({size})".format(size=format_number(size),
                                                                                      **api_args))
         chunk = res.raw.read(chunk_size)
@@ -163,8 +162,7 @@ def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024, tmp_su
                     chunk = res.raw.read(chunk_size)
                     if len(chunk) == 0:
                         break
-    if "md5" in checksums:
-        assert hasher.digest() == base64.b64decode(checksums["md5"])
+    assert hasher.digest() == base64.b64decode(checksums.get("md5", checksums["crc32c"]))
     if staging_filename.endswith(tmp_suffix):
         os.rename(staging_filename, dest_filename)
         os.utime(dest_filename, (time.time(), int(res.headers["X-Goog-Generation"]) // 1000000))
