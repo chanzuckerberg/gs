@@ -248,7 +248,7 @@ def cp(paths, content_type=None):
       gs cp gs://my-bucket/my-file.json - | jq .
     """
     assert len(paths) >= 2
-    paths = map(os.path.expanduser, paths)
+    paths = [os.path.expanduser(p) for p in paths]
     api_method_template = "b/{source_bucket}/o/{source_key}/copyTo/b/{dest_bucket}/o/{dest_key}"
     if all(p.startswith("gs://") for p in paths):
         for path in paths[:-1]:
@@ -313,7 +313,7 @@ cli.add_command(rm)
 @click.argument('paths', nargs=2, required=True)
 def sync(paths):
     """Sync a directory of files with bucket/prefix."""
-    src, dest = map(os.path.expanduser, paths)
+    src, dest = [os.path.expanduser(p) for p in paths]
     if src.startswith("gs://") and not dest.startswith("gs://"):
         bucket, prefix = parse_bucket_and_prefix(src)
         items = client.list("b/{}/o".format(bucket), params=dict())
