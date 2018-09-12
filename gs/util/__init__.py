@@ -1,4 +1,4 @@
-import struct
+import os, sys, struct
 from datetime import datetime
 from dateutil.parser import parse as dateutil_parse
 from dateutil.relativedelta import relativedelta
@@ -54,3 +54,9 @@ def long_to_bytes(n):
         i = 0
     s = s[i:]
     return s
+
+def get_file_size(path):
+    try:
+        return os.path.getsize(path)
+    except Exception:
+        return -1

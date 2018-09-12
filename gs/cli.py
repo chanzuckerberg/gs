@@ -9,7 +9,7 @@ import click, tweak, requests
 from dateutil.parser import parse as dateutil_parse
 
 from . import GSClient, GSUploadClient, logger
-from .util import Timestamp, CRC32C
+from .util import Timestamp, CRC32C, get_file_size
 from .util.compat import makedirs
 from .util.printing import page_output, tabulate, GREEN, BLUE, BOLD, format_number
 from .version import __version__
@@ -41,11 +41,11 @@ def configure():
             if buf == "":
                 continue
             break
-        if buf == "" and line != "{":
+        if buf == "" and not line.startswith("{"):
             filename = line
             break
         buf += line
-        if line == "}":
+        if line.endswith("}"):
             break
         prompt_msg = u""
     if filename:
@@ -95,20 +95,26 @@ def ls(path, max_results=None, width=None, json=False):
 
 cli.add_command(ls)
 
-def read_file_chunks(filename, hasher, chunk_size=1024 * 1024, progressbar=None):
+def read_file_chunks(filename, hasher, chunk_size=1024 * 1024, progressbar=None, start_pos=0):
     if filename == "-":
         filename = "/dev/stdin"
     with open(filename, "rb") as fh:
+        if start_pos != 0:
+            while True:
+                chunk = fh.read(min(chunk_size, max(start_pos - fh.tell(), 0)))
+                if len(chunk) == 0:
+                    break
+                hasher.update(chunk)
         chunk = fh.read(chunk_size)
         yield chunk
         hasher.update(chunk)
         chunk = fh.read(chunk_size)
         if len(chunk) > 0:
-            file_size = os.fstat(fh.fileno()).st_size
+            file_size = get_file_size(filename)
             if progressbar is None:
                 progressbar = click.progressbar(length=file_size)
             with progressbar as bar:
-                bar.update(chunk_size)
+                bar.update(chunk_size + start_pos)
                 while True:
                     bar.update(chunk_size)
                     yield chunk
@@ -122,13 +128,13 @@ def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024, tmp_su
     staging_filename = "/dev/stdout" if dest_filename == "-" else dest_filename + tmp_suffix
     hasher, checksums, req_headers, progressbar, resume_pos = None, None, {}, None, 0
     escaped_args = {k: requests.compat.quote(v, safe="") for k, v in api_args.items()}
-    if os.path.exists(staging_filename) and os.path.getsize(staging_filename) > chunk_size:
+    if os.path.exists(staging_filename) and get_file_size(staging_filename) > chunk_size:
         logger.info("Checking partial download of %s", dest_filename)
         res = client.get("b/{bucket}/o/{key}".format(**escaped_args))
         checksums = {"md5": res.get("md5Hash"), "crc32c": res["crc32c"]}
         size = int(res["size"])
         progressbar = click.progressbar(length=size, fill_char=">", file=sys.stderr)
-        hasher = hashlib.md5() if "md5" in checksums else CRC32C()
+        hasher = hashlib.md5() if checksums.get("md5") else CRC32C()
         for chunk in read_file_chunks(staging_filename, hasher, progressbar=progressbar):
             resume_pos += len(chunk)
         req_headers.update(Range="bytes={}-{}".format(resume_pos, resume_pos + size))
@@ -141,7 +147,7 @@ def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024, tmp_su
         if checksums is None:
             checksums = requests.utils.parse_dict_header(res.headers["X-Goog-Hash"])
             size = int(res.headers["Content-Length"])
-            hasher = hashlib.md5() if "md5" in checksums else CRC32C()
+            hasher = hashlib.md5() if checksums.get("md5") else CRC32C()
         logger.info("Copying gs://{bucket}/{key} to {dest_filename} ({size})".format(size=format_number(size),
                                                                                      **api_args))
         chunk = res.raw.read(chunk_size)
@@ -162,23 +168,58 @@ def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024, tmp_su
                     chunk = res.raw.read(chunk_size)
                     if len(chunk) == 0:
                         break
-    assert hasher.digest() == base64.b64decode(checksums.get("md5", checksums["crc32c"]))
+    assert hasher.digest() == base64.b64decode(checksums.get("md5") or checksums["crc32c"])
     if staging_filename.endswith(tmp_suffix):
         os.rename(staging_filename, dest_filename)
         os.utime(dest_filename, (time.time(), int(res.headers["X-Goog-Generation"]) // 1000000))
 
-def upload_one_file(path, dest_bucket, dest_key, content_type=None):
+def upload_one_file(path, dest_bucket, dest_key, content_type=None, chunk_size=1024 * 1024):
     logger.info("Copying {path} to gs://{bucket}/{key}".format(path=path, bucket=dest_bucket, key=dest_key))
-    headers = {}
+    headers, upload_id, start_pos = {}, None, 0
     if content_type is None:
         content_type, content_encoding = mimetypes.guess_type(path)
     if content_type is not None:
         headers["Content-Type"] = content_type
     hasher = hashlib.md5()
+    file_size = get_file_size(path)
+    if file_size > chunk_size:
+        cache_key_data = path + str(file_size) + dest_bucket + dest_key
+        cache_key = base64.b64encode(hashlib.md5(cache_key_data.encode()).digest()).decode()
+        client.config.setdefault("uploads", {})
+        if cache_key in client.config.uploads:
+            upload_id = client.config.uploads[cache_key]["u"]
+            res = upload_client.put("b/{bucket}/o".format(bucket=requests.compat.quote(dest_bucket)),
+                                    headers={"Content-Length": "0", "Content-Range": "bytes */{}".format(file_size)},
+                                    params=dict(uploadType="resumable", upload_id=upload_id),
+                                    stream=True)
+            if res.status_code == 308:
+                start, end = requests.utils.parse_dict_header(res.headers["Range"])["bytes"].split("-")
+                assert start == "0"
+                start_pos = int(end) + 1
+                headers["Content-Range"] = "bytes {}-{}/{}".format(start_pos, file_size - 1, file_size)
+                logger.info("Resuming upload from %s", format_number(start_pos))
+            else:
+                upload_id = None
+        if upload_id is None:
+            res = upload_client.post("b/{bucket}/o".format(bucket=requests.compat.quote(dest_bucket)),
+                                     params=dict(uploadType="resumable"),
+                                     json=dict(name=dest_key),
+                                     stream=True)
+            upload_id = res.headers["X-GUploader-UploadID"]
+            # TODO: admit more than one entry into the upload id cache
+            # if len(client.config.uploads) > cache_size:
+            #     sorted_uids = sorted(client.config.uploads, key=lambda i: client.config.uploads[i]["t"])
+            #     client.config.uploads = {k: client.config.uploads[k] for k in sorted_uids[:cache_size]}
+            client.config.uploads = {}
+            client.config.uploads[cache_key] = dict(u=upload_id, t=int(time.time()))
+            client.config.save()
+        params = dict(uploadType="resumable", upload_id=upload_id)
+    else:
+        params = dict(uploadType="media", name=dest_key)
     res = upload_client.post("b/{bucket}/o".format(bucket=requests.compat.quote(dest_bucket)),
-                             params=dict(uploadType="media", name=dest_key),
+                             params=params,
                              headers=headers,
-                             data=read_file_chunks(path, hasher))
+                             data=read_file_chunks(path, hasher, chunk_size=chunk_size, start_pos=start_pos))
     if hasher.digest() != base64.b64decode(res["md5Hash"]):
         client.delete("b/{bucket}/o/{key}".format(bucket=requests.compat.quote(dest_bucket),
                                                   key=requests.compat.quote(dest_key, safe="")))
@@ -275,7 +316,7 @@ def sync(paths):
         for remote_object in items:
             try:
                 local_path = os.path.join(dest, remote_object["name"])
-                local_size = os.path.getsize(local_path)
+                local_size = get_file_size(local_path)
                 local_mtime = datetime.datetime.utcfromtimestamp(os.path.getmtime(local_path))
                 remote_mtime = dateutil_parse(remote_object["updated"]).replace(tzinfo=None, microsecond=0)
                 if local_size == int(remote_object["size"]) and remote_mtime <= local_mtime:
@@ -290,7 +331,7 @@ def sync(paths):
         for root, dirs, files in os.walk(src):
             for filename in files:
                 local_path = os.path.join(root, filename)
-                local_size = os.path.getsize(local_path)
+                local_size = get_file_size(local_path)
                 local_mtime = datetime.datetime.utcfromtimestamp(os.path.getmtime(local_path))
                 remote_path = os.path.join(prefix, os.path.relpath(root, src).lstrip("./"), filename)
                 try:

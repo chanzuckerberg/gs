@@ -11,7 +11,7 @@ features are:
 * Intuitive convention-driven configuration of API credentials without browser login prompts
 * Checksum validation to ensure end-to-end data integrity in uploads and downloads
 * Progress bars for long-running upload and download operations
-* Resumable downloads
+* Resumable uploads and downloads
 * An attractive paging and table layout interface
 * A JSON object metadata output mode for feeding data to other utilities
 
