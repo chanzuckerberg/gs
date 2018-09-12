@@ -212,7 +212,10 @@ def upload_one_file(path, dest_bucket, dest_key, content_type=None, chunk_size=1
             #     client.config.uploads = {k: client.config.uploads[k] for k in sorted_uids[:cache_size]}
             client.config.uploads = {}
             client.config.uploads[cache_key] = dict(u=upload_id, t=int(time.time()))
-            client.config.save()
+            try:
+                client.config.save()
+            except Exception as e:
+                logger.warn("Error saving upload state to local config: %s. Upload is not resumable.", e)
         params = dict(uploadType="resumable", upload_id=upload_id)
     else:
         params = dict(uploadType="media", name=dest_key)
