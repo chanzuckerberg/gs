@@ -99,7 +99,7 @@ def read_file_chunks(filename, hasher, chunk_size=1024 * 1024, progressbar=None,
     if filename == "-":
         filename = "/dev/stdin"
     with open(filename, "rb") as fh:
-        if start_pos != 0:
+        if start_pos > 0:
             while True:
                 chunk = fh.read(min(chunk_size, max(start_pos - fh.tell(), 0)))
                 if len(chunk) == 0:
@@ -175,7 +175,7 @@ def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024, tmp_su
 
 def upload_one_file(path, dest_bucket, dest_key, content_type=None, chunk_size=1024 * 1024):
     logger.info("Copying {path} to gs://{bucket}/{key}".format(path=path, bucket=dest_bucket, key=dest_key))
-    headers, upload_id, start_pos = {}, None, 0
+    headers, upload_id, resume_pos = {}, None, 0
     if content_type is None:
         content_type, content_encoding = mimetypes.guess_type(path)
     if content_type is not None:
@@ -195,9 +195,9 @@ def upload_one_file(path, dest_bucket, dest_key, content_type=None, chunk_size=1
             if res.status_code == 308:
                 start, end = requests.utils.parse_dict_header(res.headers["Range"])["bytes"].split("-")
                 assert start == "0"
-                start_pos = int(end) + 1
-                headers["Content-Range"] = "bytes {}-{}/{}".format(start_pos, file_size - 1, file_size)
-                logger.info("Resuming upload from %s", format_number(start_pos))
+                resume_pos = int(end) + 1
+                headers["Content-Range"] = "bytes {}-{}/{}".format(resume_pos, file_size - 1, file_size)
+                logger.info("Resuming upload from %s", format_number(resume_pos))
             else:
                 upload_id = None
         if upload_id is None:
@@ -222,7 +222,7 @@ def upload_one_file(path, dest_bucket, dest_key, content_type=None, chunk_size=1
     res = upload_client.post("b/{bucket}/o".format(bucket=requests.compat.quote(dest_bucket)),
                              params=params,
                              headers=headers,
-                             data=read_file_chunks(path, hasher, chunk_size=chunk_size, start_pos=start_pos))
+                             data=read_file_chunks(path, hasher, chunk_size=chunk_size, start_pos=resume_pos))
     if hasher.digest() != base64.b64decode(res["md5Hash"]):
         client.delete("b/{bucket}/o/{key}".format(bucket=requests.compat.quote(dest_bucket),
                                                   key=requests.compat.quote(dest_key, safe="")))
