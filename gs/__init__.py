@@ -10,7 +10,9 @@ class GSClient:
     base_url = "https://www.googleapis.com/storage/v1/"
     presigned_url_base = "https://storage.googleapis.com/"
     scope = "https://www.googleapis.com/auth/cloud-platform"
-    instance_metadata_url = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
+    instance_metadata_url = "http://metadata.google.internal/computeMetadata/v1/"
+    svc_acct_token_url = instance_metadata_url + "instance/service-accounts/default/token"
+    project_id_metadata_url = instance_metadata_url + "project/project-id"
     suppress_paging_warning = False
 
     def __init__(self, config=None, **session_kwargs):
@@ -38,7 +40,7 @@ class GSClient:
                 res = self.get_session().post("https://www.googleapis.com/oauth2/v4/token", data=params)
             except NoServiceCredentials:
                 try:
-                    res = requests.get(self.instance_metadata_url, headers={"Metadata-Flavor": "Google"})
+                    res = requests.get(self.svc_acct_token_url, headers={"Metadata-Flavor": "Google"})
                 except Exception:
                     sys.exit('API credentials not configured. Please run "gs configure" '
                              'or set GOOGLE_APPLICATION_CREDENTIALS.')
@@ -96,8 +98,12 @@ class GSClient:
     def get_project(self):
         if "GOOGLE_CLOUD_PROJECT" in os.environ:
             return os.environ["GOOGLE_CLOUD_PROJECT"]
-        elif "service_credentials" in self.config:
+        self.get_session()  # Ensures any available project-specific credentials are loaded.
+        if "service_credentials" in self.config:
             return self.config.service_credentials["project_id"]
+        res = requests.get(self.project_id_metadata_url, headers={"Metadata-Flavor": "Google"})
+        res.raise_for_status()
+        return res.content.decode()
 
     def list(self, resource, **kwargs):
         while True:

@@ -87,6 +87,7 @@ Links
 * `Package distribution (PyPI) <https://pypi.python.org/pypi/gs>`_
 * `Change log <https://github.com/chanzuckerberg/gs/blob/master/Changes.rst>`_
 * `GCB builds <https://console.cloud.google.com/cloud-build/builds>`_
+* `Google Cloud Storage <https://cloud.google.com/storage/>`_
 
 Bugs
 ~~~~
