@@ -83,24 +83,24 @@ Authors
 
 Links
 -----
-* `Project home page (GitHub) <https://github.com/kislyuk/gs>`_
+* `Project home page (GitHub) <https://github.com/chanzuckerberg/gs>`_
 * `Package distribution (PyPI) <https://pypi.python.org/pypi/gs>`_
-* `Change log <https://github.com/kislyuk/gs/blob/master/Changes.rst>`_
+* `Change log <https://github.com/chanzuckerberg/gs/blob/master/Changes.rst>`_
 * `GCB builds <https://console.cloud.google.com/cloud-build/builds>`_
 
 Bugs
 ~~~~
-Please report bugs, issues, feature requests, etc. on `GitHub <https://github.com/kislyuk/gs/issues>`_.
+Please report bugs, issues, feature requests, etc. on `GitHub <https://github.com/chanzuckerberg/gs/issues>`_.
 
 License
 -------
 Licensed under the terms of the `Apache License, Version 2.0 <http://www.apache.org/licenses/LICENSE-2.0>`_.
 
-.. image:: https://travis-ci.org/kislyuk/gs.png
-   :target: https://travis-ci.org/kislyuk/gs
+.. image:: https://travis-ci.com/chanzuckerberg/gs.png
+   :target: https://travis-ci.com/chanzuckerberg/gs
 .. image:: https://img.shields.io/pypi/v/gs.svg
    :target: https://pypi.python.org/pypi/gs
 .. image:: https://img.shields.io/pypi/l/gs.svg
    :target: https://pypi.python.org/pypi/gs
-.. image:: https://codecov.io/gh/kislyuk/gs/branch/master/graph/badge.svg
-   :target: https://codecov.io/gh/kislyuk/gs
+.. image:: https://codecov.io/gh/chanzuckerberg/gs/branch/master/graph/badge.svg
+   :target: https://codecov.io/gh/chanzuckerberg/gs
