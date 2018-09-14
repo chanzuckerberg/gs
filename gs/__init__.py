@@ -3,6 +3,8 @@ import os, sys, json, datetime, logging, base64
 from gs.util.exceptions import NoServiceCredentials
 
 import requests, tweak
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util import retry, timeout
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +16,8 @@ class GSClient:
     svc_acct_token_url = instance_metadata_url + "instance/service-accounts/default/token"
     project_id_metadata_url = instance_metadata_url + "project/project-id"
     suppress_paging_warning = False
+    retry_policy = retry.Retry(connect=5, read=5, status_forcelist=frozenset({500, 502, 503, 504}), backoff_factor=1)
+    timeout_policy = timeout.Timeout(connect=8, read=32)
 
     def __init__(self, config=None, **session_kwargs):
         if config is None:
@@ -29,6 +33,9 @@ class GSClient:
             self._session = requests.Session(**self._session_kwargs)
             self._session.headers.update({"Authorization": "Bearer " + self.get_oauth2_token(),
                                           "User-Agent": self.__class__.__name__})
+            adapter = HTTPAdapter(max_retries=self.retry_policy)
+            self._session.mount('http://', adapter)
+            self._session.mount('https://', adapter)
         return self._session
 
     def get_oauth2_token(self):
@@ -76,7 +83,8 @@ class GSClient:
         return self._service_jwt
 
     def request(self, method, resource, **kwargs):
-        res = self.get_session().request(method=method, url=self.base_url + resource, **kwargs)
+        url = self.base_url + resource
+        res = self.get_session().request(method=method, url=url, timeout=self.timeout_policy, **kwargs)
         res.raise_for_status()
         return res if kwargs.get("stream") is True or method == "delete" else res.json()
 
