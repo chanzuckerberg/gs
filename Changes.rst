@@ -1,3 +1,8 @@
+Changes for v0.3.4 (2018-09-14)
+===============================
+
+-  Set retry and timeout policy on HTTP requests
+
 Changes for v0.3.3 (2018-09-12)
 ===============================
 
