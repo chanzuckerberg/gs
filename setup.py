@@ -10,7 +10,7 @@ setup(
     name='gs',
     version='0.3.4',
     url='https://github.com/kislyuk/gs',
-    license='Apache Software License',
+    license='MIT License',
     author='Andrey Kislyuk',
     author_email='kislyuk@gmail.com',
     description='A minimalistic Google Storage client',
@@ -28,7 +28,7 @@ setup(
     test_suite='test',
     classifiers=[
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: Apache Software License',
+        'License :: OSI Approved :: MIT License',
         'Operating System :: MacOS :: MacOS X',
         'Operating System :: POSIX',
         'Programming Language :: Python',
