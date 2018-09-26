@@ -1,7 +1,6 @@
 tweak >= 1.0.0, < 2
 pyjwt >= 1.6.4, < 2
 requests
-prompt-toolkit
 click >= 6.7, < 7
 cryptography
 python-dateutil
