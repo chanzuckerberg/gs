@@ -390,5 +390,29 @@ def rb(bucket_name):
 
 cli.add_command(rb)
 
+@click.command()
+@click.argument('method')
+@click.argument('gs_url')
+@click.argument('args', nargs=-1)
+def api(method, gs_url, args):
+    """
+    Use httpie to perform a raw HTTP API request.
+
+    Example:
+
+      gs api head gs://my-bucket/my-blob
+    """
+    bucket, prefix = parse_bucket_and_prefix(gs_url, require_gs_uri=False)
+    path = "b/{bucket}".format(bucket=requests.compat.quote(bucket))
+    args = list(args) + ["Authorization: Bearer " + client.get_oauth2_token(), "--check-status"]
+    if prefix:
+        path += "/o/{key}".format(key=requests.compat.quote(prefix, safe=""))
+    try:
+        os.execvp("http", ["http", method, client.base_url + path] + args)
+    except EnvironmentError:
+        exit("Error launching http. Please ensure httpie is installed (pip install httpie).")
+
+cli.add_command(api)
+
 client = GSClient()
 upload_client = GSUploadClient(config=client.config)
