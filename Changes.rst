@@ -1,3 +1,9 @@
+Changes for v0.3.6 (2018-09-26)
+===============================
+
+-  Add sanity checks to release script
+-  Add doc for gs api
+
 Changes for v0.3.5 (2018-09-26)
 ===============================
 
