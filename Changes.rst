@@ -1,3 +1,12 @@
+Changes for v0.3.5 (2018-09-26)
+===============================
+
+-  Remove dependency on prompt-toolkit
+
+-  Begin gs api
+
+-  Change license from Apache to MIT (#4)
+
 Changes for v0.3.4 (2018-09-14)
 ===============================
 
