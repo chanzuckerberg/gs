@@ -34,15 +34,13 @@ Commands:
    +------------------+--------------------------------------------------+
    | ``gs configure`` | Set gs config options, including the API key.    |
    +------------------+--------------------------------------------------+
-   | ``gs cp``        | Copy files to, from, or between buckets.         |
-   +------------------+--------------------------------------------------+
    | ``gs ls``        | List buckets or objects in a bucket/prefix.      |
    +------------------+--------------------------------------------------+
-   | ``gs mb``        | Create a new Google Storage bucket.              |
+   | ``gs cp``        | Copy files to, from, or between buckets.         |
    +------------------+--------------------------------------------------+
    | ``gs mv``        | Move files to, from, or between buckets.         |
    +------------------+--------------------------------------------------+
-   | ``gs presign``   | Get a pre-signed URL for accessing an object.    |
+   | ``gs mb``        | Create a new Google Storage bucket.              |
    +------------------+--------------------------------------------------+
    | ``gs rb``        | Permanently delete an empty bucket.              |
    +------------------+--------------------------------------------------+
@@ -51,6 +49,8 @@ Commands:
    | ``gs sync``      | Sync a directory of files with bucket/prefix.    |
    +------------------+--------------------------------------------------+
    | ``gs api``       | Use httpie to perform a raw HTTP API request.    |
+   +------------------+--------------------------------------------------+
+   | ``gs presign``   | Get a pre-signed URL for accessing an object.    |
    +------------------+--------------------------------------------------+
 
 Run ``gs configure`` to configure Google service account access credentials that will be used by the
