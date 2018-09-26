@@ -50,6 +50,8 @@ Commands:
    +------------------+--------------------------------------------------+
    | ``gs sync``      | Sync a directory of files with bucket/prefix.    |
    +------------------+--------------------------------------------------+
+   | ``gs api``       | Use httpie to perform a raw HTTP API request.    |
+   +------------------+--------------------------------------------------+
 
 Run ``gs configure`` to configure Google service account access credentials that will be used by the
 ``gs`` command. You can create a new service account key at https://console.cloud.google.com/iam-admin/serviceaccounts.
