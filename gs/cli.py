@@ -2,7 +2,7 @@
 
 # TODO: https://cloud.google.com/storage/docs/json_api/v1/how-tos/batch
 
-import os, sys, json, textwrap, logging, fnmatch, mimetypes, datetime, time, base64, hashlib
+import os, sys, json, textwrap, logging, fnmatch, mimetypes, datetime, time, base64, hashlib, glob
 from argparse import Namespace
 
 import click, tweak, requests
@@ -13,6 +13,35 @@ from .util import Timestamp, CRC32C, get_file_size
 from .util.compat import makedirs
 from .util.printing import page_output, tabulate, GREEN, BLUE, BOLD, format_number
 from .version import __version__
+
+def parse_bucket_and_prefix(path, require_gs_uri=True):
+    if require_gs_uri:
+        assert path.startswith("gs://")
+    if path.startswith("gs://"):
+        path = path[len("gs://"):]
+    if "/" in path:
+        bucket, prefix = path.split("/", 1)
+    else:
+        bucket, prefix = path, ""
+    return bucket, prefix
+
+def complete_gs_uri(ctx, args, incomplete):
+    if incomplete.startswith("gs:"):
+        if incomplete == "gs:" or incomplete == "gs:/":
+            incomplete = "gs://"
+        bucket, prefix = parse_bucket_and_prefix(incomplete, require_gs_uri=False)
+        if prefix:
+            items = client.list("b/{}/o".format(bucket), params=dict(prefix=prefix, project=client.get_project()))
+            completions = [bucket + "/" + i["name"] for i in items]
+        else:
+            items = client.list("b", params=dict(prefix=bucket, project=client.get_project()))
+            completions = [i["name"] + "/" for i in items]
+        with open("completions", "w") as fh:
+            fh.write(str(completions))
+
+        return [i.replace(":", r"\:") for i in completions]
+    else:
+        return [i for i in glob.glob(incomplete + "*")]
 
 @click.group()
 @click.version_option(version=__version__)
@@ -53,36 +82,25 @@ def configure():
 
 cli.add_command(configure)
 
-def parse_bucket_and_prefix(path, require_gs_uri=True):
-    if require_gs_uri:
-        assert path.startswith("gs://")
-    if path.startswith("gs://"):
-        path = path[len("gs://"):]
-    if "/" in path:
-        bucket, prefix = path.split("/", 1)
-    else:
-        bucket, prefix = path, ""
-    return bucket, prefix
-
 @click.command()
-@click.argument('path', required=False)
+@click.argument('path', required=False, autocompletion=complete_gs_uri)
 @click.option('--max-results', type=int, help="Limit the listing to this many results from the top.")
 @click.option("--width", type=int, default=42, help="Limit table columns to this width.")
 @click.option("--json", is_flag=True, help="Print output as JSON instead of tabular format.")
 def ls(path, max_results=None, width=None, json=False):
     """List buckets or objects in a bucket/prefix."""
+    params = dict(delimiter="/")
+    if max_results:
+        params["maxResults"] = max_results
     if path is None:
-        res = client.get("b", params=dict(project=client.get_project()))
+        items = client.list("b", params=dict(params, project=client.get_project()))
         columns = ["name", "timeCreated", "updated", "location", "storageClass"]
-        page_output(tabulate(res["items"], args=Namespace(columns=columns, max_col_width=width, json=json)))
+        page_output(tabulate(items, args=Namespace(columns=columns, max_col_width=width, json=json)))
     else:
         bucket, prefix = parse_bucket_and_prefix(path, require_gs_uri=False)
-        params = dict(delimiter="/")
         prefix = prefix.rstrip("*")
         if prefix:
             params["prefix"] = prefix
-        if max_results:
-            params["maxResults"] = max_results
         columns = ["name", "size", "timeCreated", "updated", "contentType", "storageClass"]
         items = client.list("b/{}/o".format(bucket), params=params)
         page_output(tabulate(items, args=Namespace(columns=columns, max_col_width=width, json=json)))

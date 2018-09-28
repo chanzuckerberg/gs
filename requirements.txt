@@ -1,7 +1,7 @@
 tweak >= 1.0.0, < 2
 pyjwt >= 1.6.4, < 2
 requests
-click >= 6.7, < 7
+click >= 7, < 8
 cryptography
 python-dateutil
 crc32c == 1.4
