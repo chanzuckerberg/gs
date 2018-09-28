@@ -30,12 +30,13 @@ class GSClient:
 
     def get_session(self):
         if self._session is None:
-            self._session = requests.Session(**self._session_kwargs)
-            self._session.headers.update({"Authorization": "Bearer " + self.get_oauth2_token(),
-                                          "User-Agent": self.__class__.__name__})
+            session = requests.Session(**self._session_kwargs)
+            session.headers.update({"Authorization": "Bearer " + self.get_oauth2_token(),
+                                    "User-Agent": self.__class__.__name__})
             adapter = HTTPAdapter(max_retries=self.retry_policy)
-            self._session.mount('http://', adapter)
-            self._session.mount('https://', adapter)
+            session.mount('http://', adapter)
+            session.mount('https://', adapter)
+            self._session = session
         return self._session
 
     def get_oauth2_token(self):
