@@ -1,4 +1,4 @@
-import os, sys, struct
+import os, sys, struct, warnings
 from datetime import datetime
 from dateutil.parser import parse as dateutil_parse
 from dateutil.relativedelta import relativedelta
@@ -28,7 +28,12 @@ class Timestamp(datetime):
 
 class CRC32C:
     def __init__(self, data=None):
-        import crc32c
+        try:
+            import crc32c
+        except ImportError as e:
+            warnings.warn("crc32c: %s. Switching to software mode, which may be slow." % e)
+            os.environ["CRC32C_SW_MODE"] = "1"
+            import crc32c
         self._crc32c = crc32c
         self._csum = crc32c.crc32(data if data is not None else b"")
 

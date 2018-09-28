@@ -45,7 +45,7 @@ class GSClient:
             try:
                 service_jwt = self.get_service_jwt()
                 params = dict(grant_type="urn:ietf:params:oauth:grant-type:jwt-bearer", assertion=service_jwt)
-                res = self.get_session().post("https://www.googleapis.com/oauth2/v4/token", data=params)
+                res = requests.post("https://www.googleapis.com/oauth2/v4/token", data=params)
             except NoServiceCredentials:
                 try:
                     res = requests.get(self.svc_acct_token_url, headers={"Metadata-Flavor": "Google"})
