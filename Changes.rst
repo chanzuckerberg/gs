@@ -1,3 +1,8 @@
+Changes for v0.3.8 (2018-09-28)
+===============================
+
+-  Avoid race conditions in get_session
+
 Changes for v0.3.7 (2018-09-26)
 ===============================
 
