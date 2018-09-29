@@ -238,8 +238,7 @@ def upload_one_file(path, dest_bucket, dest_key, chunk_size=1024 * 1024, content
 @click.option('--cache-control', help="Set the Cache-Control header to this value.")
 @click.option('--metadata', multiple=True, metavar="KEY=VALUE", type=lambda x: x.split("=", 1),
               help="Set metadata on destination object(s) (can be specified multiple times).")
-def cp(paths, content_type=None, content_disposition=None, content_encoding=None, content_language=None,
-       cache_control=None, metadata=None):
+def cp(paths, **upload_metadata_kwargs):
     """
     Copy files to, from, or between buckets. Examples:
 
@@ -288,9 +287,7 @@ def cp(paths, content_type=None, content_disposition=None, content_encoding=None
             # TODO: check if dest_prefix is a prefix on the remote
             if dest_prefix == "" or dest_prefix.endswith("/") or len(paths) > 2:
                 dest_key = os.path.join(dest_prefix, os.path.basename(path))
-            upload_one_file(path, dest_bucket, dest_key, content_type=content_type,
-                            content_disposition=content_disposition, content_encoding=content_encoding,
-                            content_language=content_language, cache_control=cache_control, metadata=metadata)
+            upload_one_file(path, dest_bucket, dest_key, **upload_metadata_kwargs)
     else:
         raise click.BadParameter("paths")
 
