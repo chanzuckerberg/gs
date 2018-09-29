@@ -167,10 +167,11 @@ def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024, tmp_su
         os.rename(staging_filename, dest_filename)
         os.utime(dest_filename, (time.time(), int(res.headers["X-Goog-Generation"]) // 1000000))
 
-def upload_one_file(path, dest_bucket, dest_key, content_type=None, chunk_size=1024 * 1024):
+def upload_one_file(path, dest_bucket, dest_key, chunk_size=1024 * 1024, content_type=None, content_encoding=None,
+                    content_disposition=None, content_language=None, cache_control=None, metadata=None):
     logger.info("Copying {path} to gs://{bucket}/{key}".format(path=path, bucket=dest_bucket, key=dest_key))
     headers, upload_id, resume_pos = {}, None, 0
-    if content_type is None:
+    if content_type is None and content_encoding is None:
         content_type, content_encoding = mimetypes.guess_type(path)
     if content_type is not None:
         headers["Content-Type"] = content_type
@@ -221,11 +222,24 @@ def upload_one_file(path, dest_bucket, dest_key, content_type=None, chunk_size=1
         client.delete("b/{bucket}/o/{key}".format(bucket=requests.compat.quote(dest_bucket),
                                                   key=requests.compat.quote(dest_key, safe="")))
         raise Exception("Upload checksum mismatch in {}".format(dest_key))
+    if metadata or content_disposition or content_encoding or content_language or cache_control:
+        client.patch("b/{bucket}/o/{key}".format(bucket=requests.compat.quote(dest_bucket),
+                                                 key=requests.compat.quote(dest_key, safe="")),
+                     json=dict(metadata=dict(metadata), contentDisposition=content_disposition,
+                               contentEncoding=content_encoding, contentLanguage=content_language,
+                               cacheControl=cache_control))
 
 @click.command()
 @click.argument('paths', nargs=-1, required=True)
 @click.option('--content-type', help="Set the content type to this value when uploading (guessed by default).")
-def cp(paths, content_type=None):
+@click.option('--content-encoding', help="Set the Content-Encoding header to this value (guessed by default).")
+@click.option('--content-language', help="Set the Content-Language header to this value.")
+@click.option('--content-disposition', help="Set the Content-Disposition header to this value.")
+@click.option('--cache-control', help="Set the Cache-Control header to this value.")
+@click.option('--metadata', multiple=True, metavar="KEY=VALUE", type=lambda x: x.split("=", 1),
+              help="Set metadata on destination object(s) (can be specified multiple times).")
+def cp(paths, content_type=None, content_disposition=None, content_encoding=None, content_language=None,
+       cache_control=None, metadata=None):
     """
     Copy files to, from, or between buckets. Examples:
 
@@ -274,7 +288,9 @@ def cp(paths, content_type=None):
             # TODO: check if dest_prefix is a prefix on the remote
             if dest_prefix == "" or dest_prefix.endswith("/") or len(paths) > 2:
                 dest_key = os.path.join(dest_prefix, os.path.basename(path))
-            upload_one_file(path, dest_bucket, dest_key, content_type=content_type)
+            upload_one_file(path, dest_bucket, dest_key, content_type=content_type,
+                            content_disposition=content_disposition, content_encoding=content_encoding,
+                            content_language=content_language, cache_control=cache_control, metadata=metadata)
     else:
         raise click.BadParameter("paths")
 
@@ -361,7 +377,8 @@ cli.add_command(presign)
 @click.command()
 @click.argument('bucket_name')
 @click.option('--location')
-@click.option('--storage-class')
+@click.option('--storage-class', type=click.Choice(choices=["STANDARD", "MULTI_REGIONAL", "NEARLINE", "COLDLINE",
+                                                            "DURABLE_REDUCED_AVAILABILITY"]))
 def mb(bucket_name, storage_class=None, location=None):
     """Create a new Google Storage bucket."""
     logger.info("Creating new Google Storage bucket {}".format(bucket_name))
