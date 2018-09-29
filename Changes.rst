@@ -1,3 +1,10 @@
+Changes for v0.4.0 (2018-09-28)
+===============================
+
+-  Expand metadata handling
+
+-  Simplify timeout setting
+
 Changes for v0.3.9 (2018-09-28)
 ===============================
 
