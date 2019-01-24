@@ -1,3 +1,8 @@
+Changes for v0.4.3 (2019-01-24)
+===============================
+
+-  Exit with non-zero status if error formatting fails
+
 Changes for v0.4.2 (2019-01-24)
 ===============================
 
