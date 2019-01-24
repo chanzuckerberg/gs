@@ -1,7 +1,11 @@
-import os, sys, struct, warnings
+from __future__ import print_function
+
+import os, sys, struct, warnings, functools
 from datetime import datetime
+
 from dateutil.parser import parse as dateutil_parse
 from dateutil.relativedelta import relativedelta
+import requests.exceptions
 
 from .compat import USING_PYTHON2
 
@@ -65,3 +69,16 @@ def get_file_size(path):
         return os.path.getsize(path)
     except Exception:
         return -1
+
+def format_http_errors(fn):
+    @functools.wraps(fn)
+    def error_formatter(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except requests.exceptions.HTTPError as e:
+            print("{}: {}".format(type(e).__name__, e), file=sys.stderr)
+            try:
+                exit(e.response.content.decode())
+            except Exception:
+                exit()
+    return error_formatter

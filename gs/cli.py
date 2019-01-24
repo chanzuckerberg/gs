@@ -9,7 +9,7 @@ import click, tweak, requests
 from dateutil.parser import parse as dateutil_parse
 
 from . import GSClient, GSUploadClient, logger
-from .util import Timestamp, CRC32C, get_file_size
+from .util import Timestamp, CRC32C, get_file_size, format_http_errors
 from .util.compat import makedirs
 from .util.printing import page_output, tabulate, GREEN, BLUE, BOLD, format_number
 from .version import __version__
@@ -69,6 +69,7 @@ def parse_bucket_and_prefix(path, require_gs_uri=True):
 @click.option('--max-results', type=int, help="Limit the listing to this many results from the top.")
 @click.option("--width", type=int, default=42, help="Limit table columns to this width.")
 @click.option("--json", is_flag=True, help="Print output as JSON instead of tabular format.")
+@format_http_errors
 def ls(path, max_results=None, width=None, json=False):
     """List buckets or objects in a bucket/prefix."""
     if path is None:
@@ -238,6 +239,7 @@ def upload_one_file(path, dest_bucket, dest_key, chunk_size=1024 * 1024, content
 @click.option('--cache-control', help="Set the Cache-Control header to this value.")
 @click.option('--metadata', multiple=True, metavar="KEY=VALUE", type=lambda x: x.split("=", 1),
               help="Set metadata on destination object(s) (can be specified multiple times).")
+@format_http_errors
 def cp(paths, **upload_metadata_kwargs):
     """
     Copy files to, from, or between buckets. Examples:
@@ -295,6 +297,7 @@ cli.add_command(cp)
 
 @click.command()
 @click.argument('paths', nargs=-1, required=True)
+@format_http_errors
 def mv(paths):
     """Move files to, from, or between buckets."""
     cp.main(paths, standalone_mode=False)
@@ -304,6 +307,7 @@ cli.add_command(mv)
 
 @click.command()
 @click.argument('paths', nargs=-1, required=True)
+@format_http_errors
 def rm(paths):
     """Delete objects (files) from buckets."""
     if not all(p.startswith("gs://") for p in paths):
@@ -318,6 +322,7 @@ cli.add_command(rm)
 
 @click.command()
 @click.argument('paths', nargs=2, required=True)
+@format_http_errors
 def sync(paths):
     """Sync a directory of files with bucket/prefix."""
     src, dest = [os.path.expanduser(p) for p in paths]
@@ -376,6 +381,7 @@ cli.add_command(presign)
 @click.option('--location')
 @click.option('--storage-class', type=click.Choice(choices=["STANDARD", "MULTI_REGIONAL", "NEARLINE", "COLDLINE",
                                                             "DURABLE_REDUCED_AVAILABILITY"]))
+@format_http_errors
 def mb(bucket_name, storage_class=None, location=None):
     """Create a new Google Storage bucket."""
     logger.info("Creating new Google Storage bucket {}".format(bucket_name))
@@ -391,6 +397,7 @@ cli.add_command(mb)
 
 @click.command()
 @click.argument('bucket_name')
+@format_http_errors
 def rb(bucket_name):
     """Permanently delete an empty bucket."""
     print("Deleting Google Storage bucket {}".format(bucket_name))
