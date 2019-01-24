@@ -168,7 +168,7 @@ def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024, tmp_su
         os.utime(dest_filename, (time.time(), int(res.headers["X-Goog-Generation"]) // 1000000))
 
 def upload_one_file(path, dest_bucket, dest_key, chunk_size=1024 * 1024, content_type=None, content_encoding=None,
-                    content_disposition=None, content_language=None, cache_control=None, metadata=None):
+                    content_disposition=None, content_language=None, cache_control=None, storage_class=None, metadata=None):
     logger.info("Copying {path} to gs://{bucket}/{key}".format(path=path, bucket=dest_bucket, key=dest_key))
     headers, upload_id, resume_pos = {}, None, 0
     if content_type is None and content_encoding is None:
@@ -213,21 +213,35 @@ def upload_one_file(path, dest_bucket, dest_key, chunk_size=1024 * 1024, content
                 logger.warn("Error saving upload state to local config: %s. Upload is not resumable.", e)
         params = dict(uploadType="resumable", upload_id=upload_id)
     else:
-        params = dict(uploadType="media", name=dest_key)
+        params = dict(uploadType="multipart", name=dest_key)
+
+    chunks = read_file_chunks(path, hasher, chunk_size=chunk_size, start_pos=resume_pos)
+    headers["Content-Type"] = "multipart/related; boundary=ffffff"
+    data = b"""--ffffff
+Content-Type: application/json; charset=UTF-8
+
+{}
+
+--ffffff
+Content-Type: application/octet-stream
+
+{}
+--ffffff--
+""".format(json.dumps({"storageClass": storage_class}).encode(), b"".join(chunks))
     res = upload_client.post("b/{bucket}/o".format(bucket=requests.compat.quote(dest_bucket)),
                              params=params,
                              headers=headers,
-                             data=read_file_chunks(path, hasher, chunk_size=chunk_size, start_pos=resume_pos))
+                             data=data)
     if hasher.digest() != base64.b64decode(res["md5Hash"]):
         client.delete("b/{bucket}/o/{key}".format(bucket=requests.compat.quote(dest_bucket),
                                                   key=requests.compat.quote(dest_key, safe="")))
         raise Exception("Upload checksum mismatch in {}".format(dest_key))
-    if metadata or content_disposition or content_encoding or content_language or cache_control:
+    if metadata or content_disposition or content_encoding or content_language or cache_control or storage_class:
         client.patch("b/{bucket}/o/{key}".format(bucket=requests.compat.quote(dest_bucket),
                                                  key=requests.compat.quote(dest_key, safe="")),
                      json=dict(metadata=dict(metadata), contentDisposition=content_disposition,
                                contentEncoding=content_encoding, contentLanguage=content_language,
-                               cacheControl=cache_control))
+                               cacheControl=cache_control, storageClass=storage_class))
 
 @click.command()
 @click.argument('paths', nargs=-1, required=True)
@@ -236,6 +250,7 @@ def upload_one_file(path, dest_bucket, dest_key, chunk_size=1024 * 1024, content
 @click.option('--content-language', help="Set the Content-Language header to this value.")
 @click.option('--content-disposition', help="Set the Content-Disposition header to this value.")
 @click.option('--cache-control', help="Set the Cache-Control header to this value.")
+@click.option('--storage-class', help="Set the storage class of the object to this value.")
 @click.option('--metadata', multiple=True, metavar="KEY=VALUE", type=lambda x: x.split("=", 1),
               help="Set metadata on destination object(s) (can be specified multiple times).")
 def cp(paths, **upload_metadata_kwargs):
