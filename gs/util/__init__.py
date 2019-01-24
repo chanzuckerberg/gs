@@ -75,6 +75,7 @@ def format_http_errors(fn):
             return fn(*args, **kwargs)
         except requests.exceptions.HTTPError as e:
             try:
+                e.response.json()
                 msg = e.response.content.decode()
             except Exception:
                 msg = "{}: {}".format(type(e).__name__, e)
