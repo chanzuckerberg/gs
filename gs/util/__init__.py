@@ -1,5 +1,3 @@
-from __future__ import print_function
-
 import os, sys, struct, warnings, functools
 from datetime import datetime
 
@@ -76,9 +74,9 @@ def format_http_errors(fn):
         try:
             return fn(*args, **kwargs)
         except requests.exceptions.HTTPError as e:
-            print("{}: {}".format(type(e).__name__, e), file=sys.stderr)
             try:
-                exit(e.response.content.decode())
+                msg = e.response.content.decode()
             except Exception:
-                exit()
+                msg = "{}: {}".format(type(e).__name__, e)
+            exit(msg)
     return error_formatter
