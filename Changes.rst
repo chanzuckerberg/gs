@@ -1,3 +1,8 @@
+Changes for v0.4.4 (2019-01-24)
+===============================
+
+-  Require error response to be JSON to print body
+
 Changes for v0.4.3 (2019-01-24)
 ===============================
 
