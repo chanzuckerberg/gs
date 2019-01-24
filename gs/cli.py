@@ -75,7 +75,7 @@ def ls(path, max_results=None, width=None, json=False):
     if path is None:
         res = client.get("b", params=dict(project=client.get_project()))
         columns = ["name", "timeCreated", "updated", "location", "storageClass"]
-        page_output(tabulate(res["items"], args=Namespace(columns=columns, max_col_width=width, json=json)))
+        page_output(tabulate(res.get("items", []), args=Namespace(columns=columns, max_col_width=width, json=json)))
     else:
         bucket, prefix = parse_bucket_and_prefix(path, require_gs_uri=False)
         params = dict(delimiter="/")
