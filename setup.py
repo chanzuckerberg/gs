@@ -17,6 +17,9 @@ setup(
     long_description=open('README.rst').read(),
     install_requires=install_requires,
     tests_require=tests_require,
+    extras_require={
+        ':python_version == "2.7"': ['futures']
+    },
     packages=find_packages(exclude=['test']),
     entry_points={
         'console_scripts': [

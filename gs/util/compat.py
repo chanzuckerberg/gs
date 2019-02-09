@@ -5,6 +5,8 @@ import os, sys, datetime, errno
 USING_PYTHON2 = True if sys.version_info < (3, 0) else False
 
 if USING_PYTHON2:
+    from multiprocessing import cpu_count
+    from thread import get_ident
     from StringIO import StringIO
     from repr import Repr
     str = unicode # noqa
@@ -38,12 +40,13 @@ if USING_PYTHON2:
             from dateutil.tz import tzutc
             return (dt - datetime.datetime(1970, 1, 1, tzinfo=tzutc())).total_seconds()
 else:
+    from threading import get_ident
     from io import StringIO
     from reprlib import Repr
     str = str
     from functools import lru_cache
     from shutil import get_terminal_size
     from tempfile import TemporaryDirectory
-    from os import makedirs
+    from os import makedirs, cpu_count
     from statistics import median
     timestamp = datetime.datetime.timestamp

@@ -2,7 +2,7 @@
 
 # TODO: https://cloud.google.com/storage/docs/json_api/v1/how-tos/batch
 
-import os, sys, json, textwrap, logging, fnmatch, mimetypes, datetime, time, base64, hashlib
+import os, sys, json, textwrap, logging, fnmatch, mimetypes, datetime, time, base64, hashlib, concurrent.futures
 from argparse import Namespace
 
 import click, tweak, requests
@@ -10,8 +10,8 @@ from dateutil.parser import parse as dateutil_parse
 
 from . import GSClient, GSUploadClient, logger
 from .util import Timestamp, CRC32C, get_file_size, format_http_errors
-from .util.compat import makedirs
-from .util.printing import page_output, tabulate, GREEN, BLUE, BOLD, format_number
+from .util.compat import makedirs, cpu_count
+from .util.printing import page_output, tabulate, GREEN, BLUE, BOLD, format_number, get_progressbar
 from .version import __version__
 
 @click.group()
@@ -107,7 +107,7 @@ def read_file_chunks(filename, hasher, chunk_size=1024 * 1024, progressbar=None,
         if len(chunk) > 0:
             file_size = get_file_size(filename)
             if progressbar is None:
-                progressbar = click.progressbar(length=file_size)
+                progressbar = get_progressbar(length=file_size)
             with progressbar as bar:
                 bar.update(chunk_size + start_pos)
                 while True:
@@ -128,7 +128,7 @@ def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024, tmp_su
         res = client.get("b/{bucket}/o/{key}".format(**escaped_args))
         checksums = {"md5": res.get("md5Hash"), "crc32c": res["crc32c"]}
         size = int(res["size"])
-        progressbar = click.progressbar(length=size, fill_char=">", file=sys.stderr)
+        progressbar = get_progressbar(length=size, fill_char=">", file=sys.stderr)
         hasher = hashlib.md5() if checksums.get("md5") else CRC32C()
         for chunk in read_file_chunks(staging_filename, hasher, progressbar=progressbar):
             resume_pos += len(chunk)
@@ -151,7 +151,7 @@ def download_one_file(bucket, key, dest_filename, chunk_size=1024 * 1024, tmp_su
         chunk = res.raw.read(chunk_size)
         if len(chunk) > 0:
             if progressbar is None:
-                progressbar = click.progressbar(length=size, file=sys.stderr)
+                progressbar = get_progressbar(length=size, file=sys.stderr)
             else:
                 progressbar.fill_char = "#"
             with progressbar as bar:
@@ -322,45 +322,56 @@ cli.add_command(rm)
 
 @click.command()
 @click.argument('paths', nargs=2, required=True)
+@click.option("--max-workers", type=int, default=cpu_count(),
+              help="Limit upload/download concurrency to this many threads (default: number of CPU cores detected)")
 @format_http_errors
-def sync(paths):
+def sync(paths, max_workers=None):
     """Sync a directory of files with bucket/prefix."""
     src, dest = [os.path.expanduser(p) for p in paths]
-    if src.startswith("gs://") and not dest.startswith("gs://"):
-        bucket, prefix = parse_bucket_and_prefix(src)
-        items = client.list("b/{}/o".format(bucket), params=dict())
-        for remote_object in items:
-            try:
-                local_path = os.path.join(dest, remote_object["name"])
-                local_size = get_file_size(local_path)
-                local_mtime = datetime.datetime.utcfromtimestamp(os.path.getmtime(local_path))
-                remote_mtime = dateutil_parse(remote_object["updated"]).replace(tzinfo=None, microsecond=0)
-                if local_size == int(remote_object["size"]) and remote_mtime <= local_mtime:
-                    logger.debug("sync:%s:%s: size/mtime match, skipping", src, local_path)
-                    continue
-            except OSError:
-                pass
-            makedirs(os.path.dirname(local_path), exist_ok=True)
-            download_one_file(bucket, remote_object["name"], local_path)
-    elif dest.startswith("gs://") and not src.startswith("gs://"):
-        bucket, prefix = parse_bucket_and_prefix(dest)
-        for root, dirs, files in os.walk(src):
-            for filename in files:
-                local_path = os.path.join(root, filename)
-                local_size = get_file_size(local_path)
-                local_mtime = datetime.datetime.utcfromtimestamp(os.path.getmtime(local_path))
-                remote_path = os.path.join(prefix, os.path.relpath(root, src).lstrip("./"), filename)
+    futures = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as threadpool:
+        if src.startswith("gs://") and not dest.startswith("gs://"):
+            bucket, prefix = parse_bucket_and_prefix(src)
+            prefix = prefix.rstrip("*")
+            list_params = dict(prefix=prefix) if prefix else dict()
+            items = client.list("b/{}/o".format(bucket), params=list_params)
+            for remote_object in items:
                 try:
-                    remote_object = client.get("b/{}/o/{}".format(bucket, requests.compat.quote(remote_path, safe="")))
+                    local_path = os.path.join(dest, remote_object["name"])
+                    local_size = get_file_size(local_path)
+                    local_mtime = datetime.datetime.utcfromtimestamp(os.path.getmtime(local_path))
                     remote_mtime = dateutil_parse(remote_object["updated"]).replace(tzinfo=None, microsecond=0)
-                    if local_size == int(remote_object["size"]) and remote_mtime >= local_mtime:
-                        logger.debug("sync:%s:%s: size/mtime match, skipping", local_path, dest)
+                    if local_size == int(remote_object["size"]) and remote_mtime <= local_mtime:
+                        logger.debug("sync:%s:%s: size/mtime match, skipping", src, local_path)
                         continue
-                except requests.exceptions.HTTPError:
+                except OSError:
                     pass
-                upload_one_file(local_path, bucket, remote_path)
-    else:
-        raise click.BadParameter("Expected a local directory and a gs:// URL or vice versa")
+                makedirs(os.path.dirname(local_path), exist_ok=True)
+                futures.append(threadpool.submit(download_one_file, bucket, remote_object["name"], local_path))
+        elif dest.startswith("gs://") and not src.startswith("gs://"):
+            bucket, prefix = parse_bucket_and_prefix(dest)
+            list_params = dict(prefix=prefix) if prefix else dict()
+            remote_objects = {i["name"]: i for i in client.list("b/{}/o".format(bucket), params=list_params)}
+            for root, dirs, files in os.walk(src):
+                for filename in files:
+                    local_path = os.path.join(root, filename)
+                    local_size = get_file_size(local_path)
+                    local_mtime = datetime.datetime.utcfromtimestamp(os.path.getmtime(local_path))
+                    remote_path = os.path.join(prefix, os.path.relpath(root, src).lstrip("./"), filename)
+                    try:
+                        remote_object = remote_objects[remote_path]
+                        remote_mtime = dateutil_parse(remote_object["updated"]).replace(tzinfo=None, microsecond=0)
+                        if local_size == int(remote_object["size"]) and remote_mtime >= local_mtime:
+                            logger.debug("sync:%s:%s: size/mtime match, skipping", local_path, dest)
+                            continue
+                    except requests.exceptions.HTTPError:
+                        pass
+                    futures.append(threadpool.submit(upload_one_file, local_path, bucket, remote_path))
+        else:
+            raise click.BadParameter("Expected a local directory and a gs:// URL or vice versa")
+
+        for future in futures:
+            future.result()
 
 cli.add_command(sync)
 

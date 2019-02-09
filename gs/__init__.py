@@ -1,6 +1,7 @@
-import os, sys, json, datetime, logging, base64
+import os, sys, json, datetime, logging, base64, threading
 
 from gs.util.exceptions import NoServiceCredentials
+from gs.util.compat import get_ident
 
 import requests, tweak
 from requests.adapters import HTTPAdapter
@@ -25,19 +26,20 @@ class GSClient:
         self.config = config
         self._service_jwt = None
         self._oauth2_token = None
-        self._session = None
+        self._sessions = {}
         self._session_kwargs = session_kwargs
 
     def get_session(self):
-        if self._session is None:
+        thread_id = get_ident()
+        if thread_id not in self._sessions:
             session = requests.Session(**self._session_kwargs)
             session.headers.update({"Authorization": "Bearer " + self.get_oauth2_token(),
                                     "User-Agent": self.__class__.__name__})
             adapter = HTTPAdapter(max_retries=self.retry_policy)
             session.mount('http://', adapter)
             session.mount('https://', adapter)
-            self._session = session
-        return self._session
+            self._sessions[thread_id] = session
+        return self._sessions[thread_id]
 
     def get_oauth2_token(self):
         # TODO: invalidate and refetch before expiration

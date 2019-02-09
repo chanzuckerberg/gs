@@ -1,8 +1,9 @@
 # coding: utf-8
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import os, sys, json, shutil, subprocess, re, errno
+import os, sys, json, shutil, subprocess, re, errno, threading
 from datetime import datetime, timedelta
+import click
 from .exceptions import GetFieldError, GSException
 from .compat import str, get_terminal_size
 
@@ -273,3 +274,9 @@ def tabulate(collection, args, cell_transforms=None):
         args.columns = list(trim_names(args.columns, *getattr(args, "trim_col_names", [])))
         format_args = dict(auto_col_width=True) if args.max_col_width == 0 else dict(max_col_width=args.max_col_width)
         return format_table(table, column_names=getattr(args, "display_column_names", args.columns), **format_args)
+
+def get_progressbar(**kwargs):
+    bar = click.progressbar(**kwargs)
+    if USING_PYTHON2 or threading.current_thread() is not threading.main_thread():
+        bar.is_hidden = True
+    return bar
