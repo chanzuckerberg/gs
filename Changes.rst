@@ -1,3 +1,8 @@
+Changes for v0.5.1 (2019-02-09)
+===============================
+
+-  gs rm: Implement multithreaded batch delete
+
 Changes for v0.5.0 (2019-02-09)
 ===============================
 
