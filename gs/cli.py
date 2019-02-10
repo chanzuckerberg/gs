@@ -309,7 +309,7 @@ def batch_delete_prefix(bucket, prefix, max_workers):
     futures, total = [], 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as threadpool:
         for batch in batches(items, batch_size=100):
-            logging.info("Deleting batch of %d objects in gs://%s/%s", len(batch), bucket, prefix)
+            logger.info("Deleting batch of %d objects in gs://%s/%s", len(batch), bucket, prefix)
             futures.append(threadpool.submit(batch_client.post_batch, [
                 requests.Request(method="DELETE",
                                  url="b/{bucket}/o/{key}".format(bucket=requests.compat.quote(bucket),

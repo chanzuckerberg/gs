@@ -174,6 +174,9 @@ class GSBatchClient(GSClient):
         logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
         res = self.post("", headers=headers, data="\n".join(body).encode(), stream=True)
         res.raise_for_status()
+        return self.parse_multipart_response(res)
+
+    def parse_multipart_response(self, res):
         assert res.headers["content-type"].startswith("multipart/mixed; boundary=")
         boundary = res.headers["content-type"][len("multipart/mixed; boundary="):]
         responses = []
