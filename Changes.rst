@@ -1,3 +1,8 @@
+Changes for v0.5.3 (2019-02-10)
+===============================
+
+-  Correctly discard old partial uploads
+
 Changes for v0.5.2 (2019-02-10)
 ===============================
 
