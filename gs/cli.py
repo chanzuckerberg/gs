@@ -303,7 +303,9 @@ def mv(paths):
 
 cli.add_command(mv)
 
-def batch_delete_prefix(bucket, prefix, max_workers):
+def batch_delete_prefix(bucket, prefix, max_workers, require_separator="/"):
+    if prefix and not prefix.endswith(require_separator):
+        prefix += require_separator
     list_params = dict(prefix=prefix) if prefix else dict()
     items = client.list("b/{}/o".format(bucket), params=list_params)
     futures, total = [], 0
