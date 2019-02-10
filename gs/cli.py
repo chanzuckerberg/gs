@@ -182,17 +182,18 @@ def upload_one_file(path, dest_bucket, dest_key, chunk_size=1024 * 1024, content
         client.config.setdefault("uploads", {})
         if cache_key in client.config.uploads:
             upload_id = client.config.uploads[cache_key]["u"]
-            res = upload_client.put("b/{bucket}/o".format(bucket=requests.compat.quote(dest_bucket)),
-                                    headers={"Content-Length": "0", "Content-Range": "bytes */{}".format(file_size)},
-                                    params=dict(uploadType="resumable", upload_id=upload_id),
-                                    stream=True)
-            if res.status_code == 308:
+            try:
+                res = upload_client.put("b/{bucket}/o".format(bucket=requests.compat.quote(dest_bucket)),
+                                        headers={"Content-Length": "0", "Content-Range": "bytes */" + str(file_size)},
+                                        params=dict(uploadType="resumable", upload_id=upload_id),
+                                        stream=True)
+                assert res.status_code == 308
                 start, end = requests.utils.parse_dict_header(res.headers["Range"])["bytes"].split("-")
                 assert start == "0"
                 resume_pos = int(end) + 1
                 headers["Content-Range"] = "bytes {}-{}/{}".format(resume_pos, file_size - 1, file_size)
                 logger.info("Resuming upload from %s", format_number(resume_pos))
-            else:
+            except (requests.exceptions.HTTPError, AssertionError):
                 upload_id = None
         if upload_id is None:
             res = upload_client.post("b/{bucket}/o".format(bucket=requests.compat.quote(dest_bucket)),
@@ -304,7 +305,7 @@ def mv(paths):
 cli.add_command(mv)
 
 def batch_delete_prefix(bucket, prefix, max_workers, require_separator="/"):
-    if prefix and not prefix.endswith(require_separator):
+    if prefix and require_separator and not prefix.endswith(require_separator):
         prefix += require_separator
     list_params = dict(prefix=prefix) if prefix else dict()
     items = client.list("b/{}/o".format(bucket), params=list_params)
