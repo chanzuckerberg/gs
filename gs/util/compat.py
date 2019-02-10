@@ -1,6 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import os, sys, datetime, errno
+import os, sys, datetime, errno, threading
 
 USING_PYTHON2 = True if sys.version_info < (3, 0) else False
 
@@ -39,6 +39,9 @@ if USING_PYTHON2:
         else:
             from dateutil.tz import tzutc
             return (dt - datetime.datetime(1970, 1, 1, tzinfo=tzutc())).total_seconds()
+
+    def thread_is_main():
+        return True if threading.current_thread().name == "MainThread" else False
 else:
     from threading import get_ident
     from io import StringIO
@@ -50,3 +53,6 @@ else:
     from os import makedirs, cpu_count
     from statistics import median
     timestamp = datetime.datetime.timestamp
+
+    def thread_is_main():
+        return True if threading.current_thread() is threading.main_thread() else False

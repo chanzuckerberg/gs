@@ -5,7 +5,7 @@ import os, sys, json, shutil, subprocess, re, errno, threading
 from datetime import datetime, timedelta
 import click
 from .exceptions import GetFieldError, GSException
-from .compat import str, get_terminal_size
+from .compat import str, get_terminal_size, thread_is_main
 
 USING_PYTHON2 = True if sys.version_info < (3, 0) else False
 
@@ -277,6 +277,6 @@ def tabulate(collection, args, cell_transforms=None):
 
 def get_progressbar(**kwargs):
     bar = click.progressbar(**kwargs)
-    if USING_PYTHON2 or threading.current_thread() is not threading.main_thread():
+    if not thread_is_main():
         bar.is_hidden = True
     return bar
