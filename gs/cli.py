@@ -1,15 +1,13 @@
 #!/usr/bin/env python
 
-# TODO: https://cloud.google.com/storage/docs/json_api/v1/how-tos/batch
-
 import os, sys, json, textwrap, logging, fnmatch, mimetypes, datetime, time, base64, hashlib, concurrent.futures
 from argparse import Namespace
 
 import click, tweak, requests
 from dateutil.parser import parse as dateutil_parse
 
-from . import GSClient, GSUploadClient, logger
-from .util import Timestamp, CRC32C, get_file_size, format_http_errors
+from . import GSClient, GSUploadClient, GSBatchClient, logger
+from .util import Timestamp, CRC32C, get_file_size, format_http_errors, batches
 from .util.compat import makedirs, cpu_count
 from .util.printing import page_output, tabulate, GREEN, BLUE, BOLD, format_number, get_progressbar
 from .version import __version__
@@ -305,19 +303,52 @@ def mv(paths):
 
 cli.add_command(mv)
 
+def batch_delete_prefix(bucket, prefix, max_workers):
+    list_params = dict(prefix=prefix) if prefix else dict()
+    items = client.list("b/{}/o".format(bucket), params=list_params)
+    futures, total = [], 0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as threadpool:
+        for batch in batches(items, batch_size=100):
+            logging.info("Deleting batch of %d objects in gs://%s/%s", len(batch), bucket, prefix)
+            futures.append(threadpool.submit(batch_client.post_batch, [
+                requests.Request(method="DELETE",
+                                 url="b/{bucket}/o/{key}".format(bucket=requests.compat.quote(bucket),
+                                                                 key=requests.compat.quote(obj_desc["name"], safe="")))
+                for obj_desc in batch
+            ]))
+        for future in futures:
+            total += len(future.result())
+    return total
+
 @click.command()
 @click.argument('paths', nargs=-1, required=True)
+@click.option("--recursive", is_flag=True,
+              help="If a given path is a directory (prefix), delete all objects sharing that prefix.")
+@click.option("--max-workers", type=int, default=cpu_count(),
+              help="Limit batch delete concurrency to this many threads (default: number of CPU cores detected)")
 @format_http_errors
-def rm(paths):
+def rm(paths, recursive=False, max_workers=None):
     """Delete objects (files) from buckets."""
     if not all(p.startswith("gs://") for p in paths):
         raise click.BadParameter("All paths must start with gs://")
+    num_deleted = 0
     for path in paths:
-        _, _, bucket, key = path.split("/", 3)
-        print("Deleting gs://{bucket}/{key}".format(bucket=bucket, key=key))
-        client.delete("b/{bucket}/o/{key}".format(bucket=requests.compat.quote(bucket),
-                                                  key=requests.compat.quote(key, safe="")))
-
+        bucket, prefix = parse_bucket_and_prefix(path)
+        print("Deleting gs://{bucket}/{key}".format(bucket=bucket, key=prefix))
+        try:
+            client.delete("b/{bucket}/o/{key}".format(bucket=requests.compat.quote(bucket),
+                                                      key=requests.compat.quote(prefix, safe="")))
+            num_deleted += 1
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == requests.codes.not_found:
+                if recursive:
+                    num_deleted += batch_delete_prefix(bucket, prefix, max_workers=max_workers)
+                else:
+                    msg = '{}. To recursively delete directories (prefixes), use "gs rm --recursive PATH".'
+                    raise Exception(msg.format(e.response.json()["error"]["message"]))
+            else:
+                raise
+    print("Done. {} files deleted.".format(num_deleted))
 cli.add_command(rm)
 
 @click.command()
@@ -364,7 +395,7 @@ def sync(paths, max_workers=None):
                         if local_size == int(remote_object["size"]) and remote_mtime >= local_mtime:
                             logger.debug("sync:%s:%s: size/mtime match, skipping", local_path, dest)
                             continue
-                    except requests.exceptions.HTTPError:
+                    except KeyError:
                         pass
                     futures.append(threadpool.submit(upload_one_file, local_path, bucket, remote_path))
         else:
@@ -442,3 +473,4 @@ cli.add_command(api)
 
 client = GSClient()
 upload_client = GSUploadClient(config=client.config)
+batch_client = GSBatchClient(config=client.config)

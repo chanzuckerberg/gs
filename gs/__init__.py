@@ -154,3 +154,37 @@ class GSClient:
 
 class GSUploadClient(GSClient):
     base_url = "https://www.googleapis.com/upload/storage/v1/"
+
+class GSBatchClient(GSClient):
+    base_url = "https://www.googleapis.com/batch/storage/v1/"
+
+    def post_batch(self, requests, boundary="==gsboundary=="):
+        headers = {"Content-Type": 'multipart/mixed; boundary="{}"'.format(boundary)}
+        body = []
+        for i, request in enumerate(requests):
+            subheaders = [": ".join([k, v]) for k, v in request.headers.items()]
+            body.extend(["--" + boundary, "Content-Type: application/http", "Content-ID: <{}>\n".format(i)])
+            body.append("{} /storage/v1/{} HTTP/1.1".format(request.method, request.url))
+            body.extend(subheaders)
+            body[-1] += "\n"
+            if request.data:
+                body.append(request.data)
+        body.append("--" + boundary + "--")
+        # Ignore "WARNING:urllib3.connectionpool:Failed to parse headers" (https://bugs.python.org/issue29353)
+        logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
+        res = self.post("", headers=headers, data="\n".join(body).encode(), stream=True)
+        res.raise_for_status()
+        assert res.headers["content-type"].startswith("multipart/mixed; boundary=")
+        boundary = res.headers["content-type"][len("multipart/mixed; boundary="):]
+        responses = []
+        for part in res.content.decode().split("--" + boundary)[1:]:
+            for line in part.splitlines():
+                if line.startswith("Content-ID: <response-"):
+                    content_id = int(line[len("Content-ID: <response-"):].rstrip(">"))
+                if line.startswith("HTTP/1.1 "):
+                    status_line = line
+            if not status_line.startswith("HTTP/1.1 2"):
+                msg = "Error in batch request: {}. Subrequest: {} {}"
+                raise Exception(msg.format(status_line, requests[content_id].method, requests[content_id].url))
+            responses.append(status_line)
+        return responses

@@ -81,3 +81,13 @@ def format_http_errors(fn):
                 msg = "{}: {}".format(type(e).__name__, e)
             exit(msg)
     return error_formatter
+
+def batches(iterable, batch_size=None):
+    batch = []
+    for i in iterable:
+        batch.append(i)
+        if len(batch) >= batch_size:
+            yield batch
+            batch = []
+    if len(batch) > 0:
+        yield batch
