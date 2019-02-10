@@ -1,3 +1,11 @@
+Changes for v0.5.0 (2019-02-09)
+===============================
+
+-  gs sync: use multithreaded upload and download; batch list remote
+   objects
+
+-  Bump and constrain dependencies
+
 Changes for v0.4.4 (2019-01-24)
 ===============================
 
