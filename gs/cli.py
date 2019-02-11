@@ -300,7 +300,7 @@ cli.add_command(cp)
 def mv(paths):
     """Move files to, from, or between buckets."""
     cp.main(paths, standalone_mode=False)
-    rm(paths[:-1])
+    rm.main(paths[:-1], standalone_mode=False)
 
 cli.add_command(mv)
 
@@ -351,7 +351,7 @@ def rm(paths, recursive=False, max_workers=None):
                     raise Exception(msg.format(e.response.json()["error"]["message"]))
             else:
                 raise
-    print("Done. {} files deleted.".format(num_deleted))
+    print("Done. {} objects deleted.".format(num_deleted))
 cli.add_command(rm)
 
 @click.command()

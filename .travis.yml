@@ -5,6 +5,9 @@ python:
   - 3.5
   - 3.6
 
+env:
+  - GS_TEST_BUCKET=gs-tests
+
 before_install:
   - pip install --quiet codecov flake8
 

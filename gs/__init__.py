@@ -62,8 +62,8 @@ class GSClient:
         if self._service_jwt is None:
             if "service_credentials" not in self.config:
                 if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
-                    logging.info("Using GOOGLE_APPLICATION_CREDENTIALS file %s",
-                                 os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
+                    logger.info("Using GOOGLE_APPLICATION_CREDENTIALS file %s",
+                                os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
                     with open(os.environ["GOOGLE_APPLICATION_CREDENTIALS"]) as fh:
                         self.config.service_credentials = json.load(fh)
                 else:

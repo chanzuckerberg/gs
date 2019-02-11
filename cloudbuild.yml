@@ -7,6 +7,7 @@ steps:
       set -eo pipefail;
       export GCP_PROJ_URL=http://metadata.google.internal/computeMetadata/v1/project/project-id;
       export GOOGLE_CLOUD_PROJECT=$$(curl $$GCP_PROJ_URL);
+      export GS_TEST_BUCKET=gs-tests;
       pip install --quiet codecov flake8;
       python --version;
       make test
