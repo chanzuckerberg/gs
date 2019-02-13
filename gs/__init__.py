@@ -116,10 +116,11 @@ class GSClient:
         res.raise_for_status()
         return res.content.decode()
 
-    def list(self, resource, **kwargs):
+    def list(self, resource, include_prefixes=True, **kwargs):
         while True:
             page = self.request(method="get", resource=resource, **kwargs)
-            items = [dict(name=i) for i in page.get("prefixes", [])] + page.get("items", [])
+            items = [dict(name=i) for i in page.get("prefixes", [])] if include_prefixes else []
+            items.extend(page.get("items", []))
             for item in items:
                 yield item
                 if "maxResults" in kwargs["params"]:
@@ -174,13 +175,14 @@ class GSBatchClient(GSClient):
         logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
         res = self.post("", headers=headers, data="\n".join(body).encode(), stream=True)
         res.raise_for_status()
-        return self.parse_multipart_response(res)
+        return self.parse_multipart_response(res, requests)
 
-    def parse_multipart_response(self, res):
+    def parse_multipart_response(self, res, requests):
         assert res.headers["content-type"].startswith("multipart/mixed; boundary=")
         boundary = res.headers["content-type"][len("multipart/mixed; boundary="):]
         responses = []
-        for part in res.content.decode().split("--" + boundary)[1:]:
+        for part in res.content.decode().split("--" + boundary)[1:-1]:
+            status_line = None
             for line in part.splitlines():
                 if line.startswith("Content-ID: <response-"):
                     content_id = int(line[len("Content-ID: <response-"):].rstrip(">"))

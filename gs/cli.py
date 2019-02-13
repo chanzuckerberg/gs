@@ -304,11 +304,16 @@ def mv(paths):
 
 cli.add_command(mv)
 
-def batch_delete_prefix(bucket, prefix, max_workers, require_separator="/"):
+def batch_delete_prefix(bucket, prefix, max_workers, recurse_into_dirs=True, require_separator="/"):
+    list_params = dict()
     if prefix and require_separator and not prefix.endswith(require_separator):
         prefix += require_separator
-    list_params = dict(prefix=prefix) if prefix else dict()
-    items = client.list("b/{}/o".format(bucket), params=list_params)
+    if not recurse_into_dirs:
+        list_params["delimiter"] = "/"
+        prefix = prefix.rstrip("*")
+    if prefix:
+        list_params["prefix"] = prefix
+    items = client.list("b/{}/o".format(bucket), params=list_params, include_prefixes=False)
     futures, total = [], 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as threadpool:
         for batch in batches(items, batch_size=100):
@@ -331,7 +336,11 @@ def batch_delete_prefix(bucket, prefix, max_workers, require_separator="/"):
               help="Limit batch delete concurrency to this many threads (default: number of CPU cores detected)")
 @format_http_errors
 def rm(paths, recursive=False, max_workers=None):
-    """Delete objects (files) from buckets."""
+    """
+    Delete objects (files) from buckets.
+
+    Globs (*) are supported only at the end of the path.
+    """
     if not all(p.startswith("gs://") for p in paths):
         raise click.BadParameter("All paths must start with gs://")
     num_deleted = 0
@@ -346,6 +355,9 @@ def rm(paths, recursive=False, max_workers=None):
             if e.response is not None and e.response.status_code == requests.codes.not_found:
                 if recursive:
                     num_deleted += batch_delete_prefix(bucket, prefix, max_workers=max_workers)
+                elif prefix.endswith("*"):
+                    num_deleted += batch_delete_prefix(bucket, prefix, max_workers=max_workers,
+                                                       recurse_into_dirs=False, require_separator=None)
                 else:
                     msg = '{}. To recursively delete directories (prefixes), use "gs rm --recursive PATH".'
                     raise Exception(msg.format(e.response.json()["error"]["message"]))
