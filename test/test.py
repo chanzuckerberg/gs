@@ -3,8 +3,10 @@
 
 import os, sys, unittest, uuid, tempfile, time, logging
 
-pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
-sys.path.insert(0, pkg_root)  # noqa
+try:
+    from tempfile import TemporaryDirectory
+except ImportError:
+    from gs.packages.backports.tempfile import TemporaryDirectory
 
 import gs, tweak
 from gs import cli
@@ -36,9 +38,7 @@ class TestGS(unittest.TestCase):
             cli.cp.main([tf1.name, tf2.name, test_prefix], standalone_mode=False)
             cli.ls.main([test_prefix], standalone_mode=False)
             # cli.presign.main([furl1], standalone_mode=False)
-            if USING_PYTHON2:
-                return
-            with tempfile.TemporaryDirectory() as td:
+            with TemporaryDirectory() as td:
                 cli.cp.main([furl1, furl2, td], standalone_mode=False)
                 with open(os.path.join(td, tf1.name), "rb") as fh:
                     self.assertEqual(fh.read(), payload)
