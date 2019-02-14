@@ -159,13 +159,14 @@ class GSUploadClient(GSClient):
 class GSBatchClient(GSClient):
     base_url = "https://www.googleapis.com/batch/storage/v1/"
 
-    def post_batch(self, requests, boundary="==gsboundary=="):
+    def post_batch(self, requests_, boundary="==gsboundary==", expect_codes=None):
         headers = {"Content-Type": 'multipart/mixed; boundary="{}"'.format(boundary)}
         body = []
-        for i, request in enumerate(requests):
+        for i, request in enumerate(requests_):
             subheaders = [": ".join([k, v]) for k, v in request.headers.items()]
             body.extend(["--" + boundary, "Content-Type: application/http", "Content-ID: <{}>\n".format(i)])
-            body.append("{} /storage/v1/{} HTTP/1.1".format(request.method, request.url))
+            qs = "?" + requests.compat.urlencode(request.params) if request.params else ""
+            body.append("{} /storage/v1/{}{} HTTP/1.1".format(request.method, request.url, qs))
             body.extend(subheaders)
             body[-1] += "\n"
             if request.data:
@@ -175,9 +176,9 @@ class GSBatchClient(GSClient):
         logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
         res = self.post("", headers=headers, data="\n".join(body).encode(), stream=True)
         res.raise_for_status()
-        return self.parse_multipart_response(res, requests)
+        return self.parse_multipart_response(res, requests_, expect_codes=expect_codes)
 
-    def parse_multipart_response(self, res, requests):
+    def parse_multipart_response(self, res, requests_, expect_codes=None):
         assert res.headers["content-type"].startswith("multipart/mixed; boundary=")
         boundary = res.headers["content-type"][len("multipart/mixed; boundary="):]
         responses = []
@@ -188,8 +189,10 @@ class GSBatchClient(GSClient):
                     content_id = int(line[len("Content-ID: <response-"):].rstrip(">"))
                 if line.startswith("HTTP/1.1 "):
                     status_line = line
-            if not status_line.startswith("HTTP/1.1 2"):
+            status_code = int(status_line.split(" ", 3)[1])
+            success = (status_code in expect_codes) if expect_codes else (status_code // 100 == 2)
+            if not success:
                 msg = "Error in batch request: {}. Subrequest: {} {}"
-                raise Exception(msg.format(status_line, requests[content_id].method, requests[content_id].url))
+                raise Exception(msg.format(status_line, requests_[content_id].method, requests_[content_id].url))
             responses.append(status_line)
         return responses

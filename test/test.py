@@ -3,10 +3,7 @@
 
 import os, sys, unittest, uuid, tempfile, time, logging
 
-try:
-    from tempfile import TemporaryDirectory
-except ImportError:
-    from gs.packages.backports.tempfile import TemporaryDirectory
+from gs.util.compat import TemporaryDirectory
 
 import gs, tweak
 from gs import cli
@@ -50,6 +47,7 @@ class TestGS(unittest.TestCase):
                 cli.rm.main([furl1 + ".2", furl1 + ".3"], standalone_mode=False)
                 cli.sync.main([test_prefix, td], standalone_mode=False)
                 cli.sync.main([td, test_prefix], standalone_mode=False)
+                cli.rm.main([test_prefix, "--dryrun", "--recursive"], standalone_mode=False)
                 cli.rm.main([test_prefix, "--recursive"], standalone_mode=False)
 
 if __name__ == "__main__":

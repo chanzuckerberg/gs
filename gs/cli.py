@@ -15,7 +15,11 @@ from .version import __version__
 @click.group()
 @click.version_option(version=__version__)
 def cli():
-    """gs is a minimalistic CLI for Google Cloud Storage."""
+    """
+    gs is a minimalistic CLI for Google Cloud Storage.
+
+    Run "gs COMMAND --help" for command-specific usage and options.
+    """
     logging.basicConfig(level=logging.INFO)
 
 @click.command()
@@ -304,7 +308,7 @@ def mv(paths):
 
 cli.add_command(mv)
 
-def batch_delete_prefix(bucket, prefix, max_workers, recurse_into_dirs=True, require_separator="/"):
+def batch_delete_prefix(bucket, prefix, max_workers, dryrun=False, recurse_into_dirs=True, require_separator="/"):
     list_params = dict()
     if prefix and require_separator and not prefix.endswith(require_separator):
         prefix += require_separator
@@ -317,13 +321,15 @@ def batch_delete_prefix(bucket, prefix, max_workers, recurse_into_dirs=True, req
     futures, total = [], 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as threadpool:
         for batch in batches(items, batch_size=100):
-            logger.info("Deleting batch of %d objects in gs://%s/%s", len(batch), bucket, prefix)
+            action = "Would delete" if dryrun else "Deleting"
+            logger.info("%s batch of %d objects in gs://%s/%s", action, len(batch), bucket, prefix)
             futures.append(threadpool.submit(batch_client.post_batch, [
                 requests.Request(method="DELETE",
                                  url="b/{bucket}/o/{key}".format(bucket=requests.compat.quote(bucket),
-                                                                 key=requests.compat.quote(obj_desc["name"], safe="")))
+                                                                 key=requests.compat.quote(obj_desc["name"], safe="")),
+                                 params=dict(ifGenerationMatch="0") if dryrun else dict())
                 for obj_desc in batch
-            ]))
+            ], expect_codes=[requests.codes.precondition_failed] if dryrun else None))
         for future in futures:
             total += len(future.result())
     return total
@@ -334,36 +340,40 @@ def batch_delete_prefix(bucket, prefix, max_workers, recurse_into_dirs=True, req
               help="If a given path is a directory (prefix), delete all objects sharing that prefix.")
 @click.option("--max-workers", type=int, default=cpu_count(),
               help="Limit batch delete concurrency to this many threads (default: number of CPU cores detected)")
+@click.option("--dryrun", is_flag=True, help="List the operations that would run without actually running them.")
 @format_http_errors
-def rm(paths, recursive=False, max_workers=None):
+def rm(paths, recursive=False, max_workers=None, dryrun=False):
     """
     Delete objects (files) from buckets.
 
-    Globs (*) are supported only at the end of the path.
+    Wildcard globs (*) are supported only at the end of gs:// paths.
     """
     if not all(p.startswith("gs://") for p in paths):
         raise click.BadParameter("All paths must start with gs://")
     num_deleted = 0
     for path in paths:
         bucket, prefix = parse_bucket_and_prefix(path)
-        print("Deleting gs://{bucket}/{key}".format(bucket=bucket, key=prefix))
+        print("{} gs://{bucket}/{key}".format("Would delete" if dryrun else "Deleted", bucket=bucket, key=prefix))
         try:
             client.delete("b/{bucket}/o/{key}".format(bucket=requests.compat.quote(bucket),
-                                                      key=requests.compat.quote(prefix, safe="")))
+                                                      key=requests.compat.quote(prefix, safe="")),
+                          params=dict(ifGenerationMatch="0") if dryrun else dict())
             num_deleted += 1
         except requests.exceptions.HTTPError as e:
-            if e.response is not None and e.response.status_code == requests.codes.not_found:
+            if dryrun and e.response is not None and e.response.status_code == requests.codes.precondition_failed:
+                num_deleted += 1
+            elif e.response is not None and e.response.status_code == requests.codes.not_found:
                 if recursive:
-                    num_deleted += batch_delete_prefix(bucket, prefix, max_workers=max_workers)
+                    num_deleted += batch_delete_prefix(bucket, prefix, max_workers=max_workers, dryrun=dryrun)
                 elif prefix.endswith("*"):
-                    num_deleted += batch_delete_prefix(bucket, prefix, max_workers=max_workers,
+                    num_deleted += batch_delete_prefix(bucket, prefix, max_workers=max_workers, dryrun=dryrun,
                                                        recurse_into_dirs=False, require_separator=None)
                 else:
                     msg = '{}. To recursively delete directories (prefixes), use "gs rm --recursive PATH".'
                     raise Exception(msg.format(e.response.json()["error"]["message"]))
             else:
                 raise
-    print("Done. {} objects deleted.".format(num_deleted))
+    print("Done. {} objects {}deleted.".format(num_deleted, "would be " if dryrun else ""))
 cli.add_command(rm)
 
 @click.command()
