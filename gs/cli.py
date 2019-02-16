@@ -233,6 +233,20 @@ def upload_one_file(path, dest_bucket, dest_key, chunk_size=1024 * 1024, content
                                contentEncoding=content_encoding, contentLanguage=content_language,
                                cacheControl=cache_control))
 
+def copy_one_remote(**api_args):
+    api_method_template = "b/{source_bucket}/o/{source_key}/copyTo/b/{dest_bucket}/o/{dest_key}"
+    logger.info("Copying gs://{source_bucket}/{source_key} to gs://{dest_bucket}/{dest_key}".format(**api_args))
+    escaped_args = {k: requests.compat.quote(v, safe="") for k, v in api_args.items()}
+    return client.post(api_method_template.format(**escaped_args))
+
+def expand_trailing_glob(bucket, prefix):
+    if prefix.endswith("*"):
+        list_params = dict(delimiter="/", prefix=prefix.rstrip("*"))
+        for item in client.list("b/{}/o".format(bucket), params=list_params, include_prefixes=False):
+            yield bucket, item
+    else:
+        yield bucket, dict(name=prefix)
+
 @click.command()
 @click.argument('paths', nargs=-1, required=True)
 @click.option('--content-type', help="Set the content type to this value when uploading (guessed by default).")
@@ -249,7 +263,7 @@ def cp(paths, **upload_metadata_kwargs):
 
       gs cp * gs://my-bucket/my-prefix/
 
-      gs cp gs://my-bucket/x .
+      gs cp gs://my-bucket/foo* .
 
       gs cp gs://my-bucket/foo gs://my-other-bucket/bar
 
@@ -258,33 +272,28 @@ def cp(paths, **upload_metadata_kwargs):
       cat my-file | gs cp - gs://my-bucket/my-file
 
       gs cp gs://my-bucket/my-file.json - | jq .
+
+    Wildcard globs (*) are supported only at the end of gs:// paths.
     """
     assert len(paths) >= 2
     paths = [os.path.expanduser(p) for p in paths]
-    api_method_template = "b/{source_bucket}/o/{source_key}/copyTo/b/{dest_bucket}/o/{dest_key}"
     if all(p.startswith("gs://") for p in paths):
+        dest_bucket, dest_prefix = parse_bucket_and_prefix(paths[-1])
         for path in paths[:-1]:
-            source_bucket, source_key = parse_bucket_and_prefix(path)
-            dest_bucket, dest_prefix = parse_bucket_and_prefix(paths[-1])
-            dest_key = dest_prefix
-            # TODO: check if dest_prefix is a prefix on the remote
-            if dest_prefix.endswith("/") or len(paths) > 2:
-                dest_key = os.path.join(dest_prefix, os.path.basename(source_key))
-            api_args = dict(source_bucket=source_bucket,
-                            source_key=source_key,
-                            dest_bucket=dest_bucket,
-                            dest_key=dest_key)
-            logger.info("Copying gs://{source_bucket}/{source_key} to gs://{dest_bucket}/{dest_key}".format(**api_args))
-            escaped_args = {k: requests.compat.quote(v, safe="") for k, v in api_args.items()}
-            client.post(api_method_template.format(**escaped_args))
+            for source_bucket, item in expand_trailing_glob(*parse_bucket_and_prefix(path)):
+                source_key, dest_key = item["name"], dest_prefix
+                # TODO: check if dest_prefix is a prefix on the remote
+                if dest_prefix.endswith("/") or path.endswith("*") or len(paths) > 2:
+                    dest_key = os.path.join(dest_prefix, os.path.basename(source_key))
+                copy_one_remote(source_bucket=source_bucket, source_key=source_key,
+                                dest_bucket=dest_bucket, dest_key=dest_key)
     elif all(p.startswith("gs://") for p in paths[:-1]) and not paths[-1].startswith("gs://"):
-        # TODO: support remote wildcards
         for path in paths[:-1]:
-            source_bucket, source_key = parse_bucket_and_prefix(path)
-            dest_filename = paths[-1]
-            if os.path.isdir(dest_filename) or len(paths) > 2:
-                dest_filename = os.path.join(dest_filename, os.path.basename(source_key))
-            download_one_file(bucket=source_bucket, key=source_key, dest_filename=dest_filename)
+            for source_bucket, item in expand_trailing_glob(*parse_bucket_and_prefix(path)):
+                dest_filename = paths[-1]
+                if os.path.isdir(dest_filename) or len(paths) > 2:
+                    dest_filename = os.path.join(dest_filename, os.path.basename(item["name"]))
+                download_one_file(bucket=source_bucket, key=item["name"], dest_filename=dest_filename)
     elif paths[-1].startswith("gs://") and not any(p.startswith("gs://") for p in paths[0:-1]):
         for path in paths[:-1]:
             dest_bucket, dest_prefix = parse_bucket_and_prefix(paths[-1])

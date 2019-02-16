@@ -43,6 +43,8 @@ class TestGS(unittest.TestCase):
                     self.assertEqual(fh.read(), payload[:16])
                 cli.cp.main([furl1, furl1 + ".2"], standalone_mode=False)
                 cli.mv.main([furl1, furl1 + ".3"], standalone_mode=False)
+                cli.ls.main([furl1 + ".*"], standalone_mode=False)
+                cli.cp.main([furl1 + ".*", furl1 + "-dir"], standalone_mode=False)
                 cli.cp.main([furl1 + ".3", furl1 + ".4"], standalone_mode=False)
                 cli.rm.main([furl1 + ".2", furl1 + ".3"], standalone_mode=False)
                 cli.sync.main([test_prefix, td], standalone_mode=False)

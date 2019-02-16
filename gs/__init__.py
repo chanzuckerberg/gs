@@ -189,7 +189,7 @@ class GSBatchClient(GSClient):
                     content_id = int(line[len("Content-ID: <response-"):].rstrip(">"))
                 if line.startswith("HTTP/1.1 "):
                     status_line = line
-            status_code = int(status_line.split(" ", 3)[1])
+            status_code = int(status_line.split(" ", 2)[1])
             success = (status_code in expect_codes) if expect_codes else (status_code // 100 == 2)
             if not success:
                 msg = "Error in batch request: {}. Subrequest: {} {}"
