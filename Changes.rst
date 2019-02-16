@@ -1,3 +1,10 @@
+Changes for v0.5.6 (2019-02-15)
+===============================
+
+-  gs cp: support trailing wildcards
+
+-  gs rm: support dryrun parameter
+
 Changes for v0.5.5 (2019-02-13)
 ===============================
 
