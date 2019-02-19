@@ -243,6 +243,7 @@ def expand_trailing_glob(bucket, prefix):
     if prefix.endswith("*"):
         list_params = dict(delimiter="/", prefix=prefix.rstrip("*"))
         for item in client.list("b/{}/o".format(bucket), params=list_params, include_prefixes=False):
+            assert ".." not in item["name"].split("/")
             yield bucket, item
     else:
         yield bucket, dict(name=prefix)
@@ -296,6 +297,9 @@ def cp(paths, **upload_metadata_kwargs):
                 download_one_file(bucket=source_bucket, key=item["name"], dest_filename=dest_filename)
     elif paths[-1].startswith("gs://") and not any(p.startswith("gs://") for p in paths[0:-1]):
         for path in paths[:-1]:
+            if path.endswith(".gsdownload"):
+                logger.info("Skipping partial download file %s", path)
+                continue
             dest_bucket, dest_prefix = parse_bucket_and_prefix(paths[-1])
             dest_key = dest_prefix
             # TODO: check if dest_prefix is a prefix on the remote
@@ -362,7 +366,7 @@ def rm(paths, recursive=False, max_workers=None, dryrun=False):
     num_deleted = 0
     for path in paths:
         bucket, prefix = parse_bucket_and_prefix(path)
-        print("{} gs://{bucket}/{key}".format("Would delete" if dryrun else "Deleted", bucket=bucket, key=prefix))
+        print("{} gs://{bucket}/{key}".format("Would delete" if dryrun else "Deleting", bucket=bucket, key=prefix))
         try:
             client.delete("b/{bucket}/o/{key}".format(bucket=requests.compat.quote(bucket),
                                                       key=requests.compat.quote(prefix, safe="")),
@@ -401,6 +405,7 @@ def sync(paths, max_workers=None):
             list_params = dict(prefix=prefix) if prefix else dict()
             items = client.list("b/{}/o".format(bucket), params=list_params)
             for remote_object in items:
+                assert ".." not in remote_object["name"].split("/")
                 try:
                     local_path = os.path.join(dest, remote_object["name"])
                     local_size = get_file_size(local_path)
@@ -419,6 +424,9 @@ def sync(paths, max_workers=None):
             remote_objects = {i["name"]: i for i in client.list("b/{}/o".format(bucket), params=list_params)}
             for root, dirs, files in os.walk(src):
                 for filename in files:
+                    if filename.endswith(".gsdownload"):
+                        logger.info("Skipping partial download file %s", filename)
+                        continue
                     local_path = os.path.join(root, filename)
                     local_size = get_file_size(local_path)
                     local_mtime = datetime.datetime.utcfromtimestamp(os.path.getmtime(local_path))
