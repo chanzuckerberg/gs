@@ -15,5 +15,7 @@ steps:
   args: *test_script
 - name: python:3.4-stretch
   args: *test_script
+- name: python:3.8-stretch
+  args: *test_script
 
 timeout: 600s
