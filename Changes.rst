@@ -1,3 +1,12 @@
+Changes for v1.0.0 (2020-07-15)
+===============================
+
+-  Bump crc32c version
+
+-  Support anonymous requests
+
+-  Package is stable
+
 Changes for v0.5.6 (2019-02-15)
 ===============================
 
