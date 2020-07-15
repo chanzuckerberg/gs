@@ -33,8 +33,10 @@ class GSClient:
         thread_id = get_ident()
         if thread_id not in self._sessions:
             session = requests.Session(**self._session_kwargs)
-            session.headers.update({"Authorization": "Bearer " + self.get_oauth2_token(),
-                                    "User-Agent": self.__class__.__name__})
+            session.headers.update({"User-Agent": self.__class__.__name__})
+            token = self.get_oauth2_token()
+            if token is not None:
+                session.headers.update({"Authorization": "Bearer " + token})
             adapter = HTTPAdapter(max_retries=self.retry_policy)
             session.mount('http://', adapter)
             session.mount('https://', adapter)
@@ -52,8 +54,9 @@ class GSClient:
                 try:
                     res = requests.get(self.svc_acct_token_url, headers={"Metadata-Flavor": "Google"})
                 except Exception:
-                    sys.exit('API credentials not configured. Please run "gs configure" '
-                             'or set GOOGLE_APPLICATION_CREDENTIALS.')
+                    logger.warn('API credentials not configured. Sending unsigned requests.')
+                    logger.warn('To set credentials, run "gs configure" or set GOOGLE_APPLICATION_CREDENTIALS.')
+                    return None
             res.raise_for_status()
             self._oauth2_token = res.json()["access_token"]
         return self._oauth2_token
