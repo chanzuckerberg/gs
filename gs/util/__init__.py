@@ -30,12 +30,7 @@ class Timestamp(datetime):
 
 class CRC32C:
     def __init__(self, data=None):
-        try:
-            import crc32c
-        except ImportError as e:
-            warnings.warn("crc32c: %s. Switching to software mode, which may be slow." % e)
-            os.environ["CRC32C_SW_MODE"] = "1"
-            import crc32c
+        import crc32c
         self._crc32c = crc32c
         self._csum = crc32c.crc32(data if data is not None else b"")
 
